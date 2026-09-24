@@ -1,0 +1,586 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root, :root[data-theme="tulip"] {
+  --bg-app: #F4F6F3;
+  --bg-surface: #FFFFFF;
+  --bg-subtle: #EAF0E9;
+  --bg-hover: #DDE8DC;
+  --border-color: rgba(15, 45, 30, 0.08);
+  
+  --text-main: #020617;
+  --text-muted: #334155;
+  --text-dim: #64748B;
+  
+  --accent: #10B981;
+  --accent-soft: #ECFDF5;
+  --accent-orange: #F97316;
+  
+  --font-custom: "Noto Sans CJK SC", "Source Han Sans SC", "PingFang SC", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --shadow-card: 0 10px 30px -4px rgba(16, 35, 24, 0.04), 0 2px 8px -2px rgba(16, 35, 24, 0.02);
+  --shadow-pop: 0 20px 45px -10px rgba(16, 35, 24, 0.12), 0 4px 12px rgba(16, 35, 24, 0.04);
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background-color: var(--bg-app);
+  color: var(--text-main);
+  user-select: none;
+  font-family: var(--font-custom);
+  -webkit-font-smoothing: auto;
+  -moz-osx-font-smoothing: auto;
+  text-rendering: optimizeLegibility;
+}
+
+#app {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--bg-app);
+}
+
+.stable-scroll {
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+.soft-card {
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: 20px;
+  box-shadow: var(--shadow-card);
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+.soft-card:hover {
+  border-color: rgba(16, 185, 129, 0.22);
+}
+
+.soft-modal {
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: 24px;
+  box-shadow: var(--shadow-pop);
+  transform: none !important;
+  backface-visibility: hidden;
+}
+
+::selection {
+  background-color: #A7F3D0 !important;
+  color: #064E3B !important;
+}
+
+textarea, input {
+  caret-color: #059669;
+}
+
+.writing-well {
+  background-color: #F8FAFC;
+  border: 1px solid rgba(15, 45, 30, 0.1);
+  color: #0F172A;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.writing-well:focus {
+  background-color: #FFFFFF;
+  border-color: rgba(16, 185, 129, 0.5);
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.12);
+}
+.writing-well::placeholder {
+  color: #94A3B8;
+}
+
+.quote-link-badge {
+  background: linear-gradient(135deg, #ECFDF5 0%, #E0F2FE 100%);
+  color: #065F46;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  box-shadow: 0 2px 6px rgba(16, 185, 129, 0.08);
+}
+.quote-link-badge:hover {
+  background: linear-gradient(135deg, #D1FAE5 0%, #BAE6FD 100%);
+  box-shadow: 0 4px 10px rgba(16, 185, 129, 0.16);
+  transform: translateY(-0.5px);
+}
+
+/* 黄金比例杂志级排版（清朗不虚，加粗醒目且笔画绝不粘连） */
+.rich-rendered {
+  color: #1E293B !important;
+  font-family: "Noto Sans CJK SC", "Source Han Sans SC", "PingFang SC", "Microsoft YaHei", -apple-system, system-ui, sans-serif !important;
+  font-weight: 400 !important;
+  font-size: 15px !important;
+  line-height: 1.75 !important;
+  word-break: break-all !important;
+  overflow-wrap: anywhere !important;
+  white-space: pre-wrap !important;
+  letter-spacing: 0.01em !important;
+  text-rendering: optimizeLegibility !important;
+}
+
+.rich-rendered p {
+  margin: 3px 0 !important;
+}
+
+/* 优雅半粗体（骨架立体，纯黑突出，笔画缝隙清晰可见） */
+.rich-rendered strong,
+.rich-rendered b,
+.tiptap strong,
+.tiptap b {
+  font-weight: 650 !important;
+  color: #000000 !important;
+  letter-spacing: 0.02em !important;
+}
+.rich-rendered mark { background-color: #FEF08A; color: #713F12; padding: 1px 6px; border-radius: 6px; font-weight: 500; }
+.rich-rendered code { font-family: ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, monospace; font-size: 0.88em; background-color: #F1F5F9; padding: 2px 6px; border-radius: 6px; color: #0F172A; }
+.rich-rendered blockquote { border-left: 3px solid #10B981; padding-left: 14px; margin: 8px 0; color: #334155; font-style: italic; background: rgba(16, 185, 129, 0.03); border-radius: 0 8px 8px 0; }
+.rich-rendered ul { list-style-type: disc; padding-left: 18px; margin: 6px 0; }
+
+/* --- Tiptap 现代所见即所得排版系统 --- */
+/* 彻底激活 H1/H2 标题与引用块视觉，绝非摆设 */
+.tiptap-container h1, .rich-rendered h1 {
+  font-size: 1.6rem !important;
+  font-weight: 800 !important;
+  line-height: 1.3 !important;
+  margin: 0.6rem 0 0.3rem 0 !important;
+  color: #0F172A !important;
+}
+.tiptap-container h2, .rich-rendered h2 {
+  font-size: 1.3rem !important;
+  font-weight: 700 !important;
+  line-height: 1.35 !important;
+  margin: 0.5rem 0 0.25rem 0 !important;
+  color: #0F172A !important;
+}
+.tiptap-container blockquote, .rich-rendered blockquote {
+  border-left: 3.5px solid #10B981 !important;
+  padding-left: 12px !important;
+  margin: 8px 0 !important;
+  color: #334155 !important;
+  font-style: italic !important;
+  background: rgba(16, 185, 129, 0.05) !important;
+  border-radius: 0 8px 8px 0 !important;
+}
+.tiptap-container mark, .rich-rendered mark {
+  padding: 1px 4px !important;
+  border-radius: 4px !important;
+  font-weight: 500 !important;
+}
+.tiptap-container {
+  height: 100%;
+  outline: none;
+}
+.tiptap-container .tiptap {
+  height: 100%;
+  outline: none;
+}
+.tiptap-container p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: #94A3B8;
+  pointer-events: none;
+  height: 0;
+}
+
+/* 真正的待办打勾方框（绝无 - [ ] 字符） */
+ul[data-type="taskList"] {
+  list-style: none !important;
+  padding: 0 !important;
+  margin: 6px 0 !important;
+}
+ul[data-type="taskList"] li[data-type="taskItem"] {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 4px 0;
+  user-select: none;
+}
+ul[data-type="taskList"] li[data-type="taskItem"] label {
+  display: flex;
+  align-items: center;
+  margin-top: 5px;
+}
+ul[data-type="taskList"] li[data-type="taskItem"] label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: #10B981;
+  border-radius: 4px;
+}
+ul[data-type="taskList"] li[data-type="taskItem"][data-checked="true"] > div {
+  text-decoration: line-through;
+  color: #94A3B8;
+}
+
+/* --- ThoughtRings 特色丰富样式 --- */
+/* 真·所见即所得输入画布 */
+.wysiwyg-canvas:empty::before {
+  content: attr(data-placeholder);
+  color: #94A3B8;
+  pointer-events: none;
+}
+
+/* 交互式真实打勾清单 */
+.real-todo-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 4px 0;
+  user-select: none;
+}
+.real-todo-item input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin-top: 5px;
+  accent-color: #10B981;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.real-todo-item input[type="checkbox"]:checked + span {
+  text-decoration: line-through;
+  color: #94A3B8;
+}
+.rich-rendered .wavy-underline {
+  text-decoration: underline wavy #10B981;
+  text-underline-offset: 4px;
+}
+
+.rich-rendered .spoiler-mask {
+  background-color: #E2E8F0;
+  color: transparent !important;
+  border-radius: 6px;
+  padding: 1px 6px;
+  filter: blur(4px);
+  user-select: none;
+  transition: all 0.25s ease;
+  cursor: pointer;
+}
+.rich-rendered .spoiler-mask:hover,
+.rich-rendered .spoiler-mask:active {
+  color: #0F172A !important;
+  background-color: #FEF3C7;
+  filter: blur(0);
+  user-select: text;
+}
+
+.rich-rendered .callout-box {
+  margin: 10px 0;
+  padding: 10px 14px;
+  border-radius: 16px;
+  border-left: 4px solid;
+  line-height: 1.6;
+}
+.rich-rendered .callout-idea {
+  background-color: rgba(16, 185, 129, 0.08);
+  border-color: #10B981;
+  color: #064E3B;
+}
+.rich-rendered .callout-warn {
+  background-color: rgba(245, 158, 11, 0.09);
+  border-color: #F59E0B;
+  color: #78350F;
+}
+.rich-rendered .callout-hypo {
+  background-color: rgba(99, 102, 241, 0.08);
+  border-color: #6366F1;
+  color: #312E81;
+}
+
+.rich-rendered .task-item {
+  list-style: none !important;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 4px 0;
+}
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-thumb { background: rgba(15, 45, 30, 0.15); border-radius: 9999px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(16, 185, 129, 0.4); }
+::-webkit-scrollbar-track { background: transparent; }
+
+.ring-card-3d {
+  position: relative;
+  min-width: 0;
+  max-width: 100%;
+  background: #FFFFFF;
+  border: 1px solid rgba(15, 45, 30, 0.08);
+  border-radius: 18px;
+  box-shadow: 
+    0 4px 16px -2px rgba(15, 45, 30, 0.03),
+    0 1px 3px rgba(15, 45, 30, 0.02);
+  padding: 13px 18px;
+  word-break: break-all;
+  overflow-wrap: anywhere;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.ring-card-3d:hover {
+  border-color: rgba(16, 185, 129, 0.3);
+  box-shadow: 
+    0 8px 24px -4px rgba(16, 185, 129, 0.08),
+    0 2px 6px rgba(0, 0, 0, 0.02);
+  transform: translateY(-1px);
+}
+
+.timeline-stem-3d {
+  position: relative;
+  padding-left: 28px !important;
+  margin-left: 8px !important;
+}
+.timeline-stem-3d::before {
+  content: "";
+  position: absolute;
+  left: 7px;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  background: linear-gradient(180deg, rgba(16, 185, 129, 0.4) 0%, rgba(6, 182, 212, 0.25) 50%, rgba(15, 45, 30, 0.06) 100%);
+  border-radius: 9999px;
+}
+
+.sidebar-dock-enter-active,
+.sidebar-dock-leave-active {
+  transition: width 220ms cubic-bezier(0.2, 0, 0, 1),
+              margin-right 220ms cubic-bezier(0.2, 0, 0, 1),
+              opacity 160ms ease !important;
+  overflow: hidden !important;
+  flex-shrink: 0 !important;
+}
+.sidebar-dock-enter-from,
+.sidebar-dock-leave-to {
+  width: 0 !important;
+  margin-right: 0 !important;
+  opacity: 0 !important;
+}
+.sidebar-dock-enter-to,
+.sidebar-dock-leave-from {
+  width: 17rem !important;
+  margin-right: 1.25rem !important;
+  opacity: 1 !important;
+}
+
+@keyframes card-land-glow {
+  0% {
+    background-color: #ECFDF5 !important;
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.4);
+  }
+  100% {
+    background-color: #FFFFFF !important;
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+  }
+}
+.card-target-arrival {
+  animation: card-land-glow 1600ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes pop {
+  0% { transform: scale(0.97); opacity: 0; }
+  100% { transform: none !important; opacity: 1; }
+}
+@keyframes fadeIn {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+.animate-pop {
+  animation: pop 160ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.animate-fade-in {
+  animation: fadeIn 150ms ease-out both;
+}
+
+.clean-quote-collapsed {
+  display: block !important;
+  max-height: 114px !important;
+  overflow: hidden !important;
+  position: relative !important;
+}
+
+.clean-thought-collapsed {
+  display: block !important;
+  max-height: 82px !important;
+  overflow: hidden !important;
+  position: relative !important;
+}
+
+*, *::before, *::after {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+header {
+  background-color: #FFFFFF !important;
+}
+
+/* --- Tiptap 全局统一排版样式 --- */
+.tiptap-container {
+  height: 100%;
+  outline: none;
+}
+.tiptap-container .tiptap {
+  height: 100%;
+  outline: none;
+}
+.tiptap-container p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: #94A3B8;
+  pointer-events: none;
+  height: 0;
+}
+.tiptap-container h1, .rich-rendered h1 {
+  font-size: 1.55rem !important;
+  font-weight: 800 !important;
+  line-height: 1.3 !important;
+  margin: 0.5rem 0 0.3rem 0 !important;
+  color: #0F172A !important;
+}
+.tiptap-container h2, .rich-rendered h2 {
+  font-size: 1.25rem !important;
+  font-weight: 700 !important;
+  line-height: 1.35 !important;
+  margin: 0.4rem 0 0.25rem 0 !important;
+  color: #0F172A !important;
+}
+.tiptap-container blockquote, .rich-rendered blockquote {
+  border-left: 3.5px solid #10B981 !important;
+  padding-left: 12px !important;
+  margin: 6px 0 !important;
+  color: #334155 !important;
+  font-style: italic !important;
+  background: rgba(16, 185, 129, 0.05) !important;
+  border-radius: 0 8px 8px 0 !important;
+}
+ul[data-type="taskList"] {
+  list-style: none !important;
+  padding: 0 !important;
+  margin: 4px 0 !important;
+}
+ul[data-type="taskList"] li[data-type="taskItem"] {
+  display: flex !important;
+  align-items: flex-start !important;
+  gap: 8px !important;
+  margin: 4px 0 !important;
+}
+ul[data-type="taskList"] li[data-type="taskItem"] label input[type="checkbox"] {
+  width: 16px !important;
+  height: 16px !important;
+  cursor: pointer !important;
+  accent-color: #10B981 !important;
+  margin-top: 5px !important;
+}
+ul[data-type="taskList"] li[data-type="taskItem"][data-checked="true"] > div {
+  text-decoration: line-through !important;
+  color: #94A3B8 !important;
+}
+
+/* 有序与无序列表真实视觉样式（消除 Tailwind 抹除） */
+.tiptap-container ul:not([data-type="taskList"]),
+.rich-rendered ul:not([data-type="taskList"]) {
+  list-style-type: disc !important;
+  padding-left: 1.35rem !important;
+  margin: 6px 0 !important;
+}
+
+.tiptap-container ol,
+.rich-rendered ol {
+  list-style-type: decimal !important;
+  padding-left: 1.35rem !important;
+  margin: 6px 0 !important;
+}
+
+.tiptap-container li:not([data-type="taskItem"]),
+.rich-rendered li:not([data-type="taskItem"]) {
+  margin: 3px 0 !important;
+  line-height: 1.75 !important;
+}
+
+/* --- 专注模式极致丝滑滚动通道 --- */
+.focus-scroll-viewport {
+  overflow-y: auto !important;
+  scroll-behavior: smooth;
+  will-change: scroll-position;
+  contain: content;
+  overscroll-behavior: contain;
+}
+.focus-card-optimized {
+  contain: paint;
+}
+
+/* ==========================================================================
+   ThoughtRings 典雅高亮设计系统 (郁金香晨光琥珀金 Amber Dawn)
+   - 与清晨翡翠绿 (#10B981) 构成经典的自然生机互补色
+   - 双色光泽渐变配合实体马克笔斜切压痕底线，极度吸睛且不刺目
+   - 9.2:1 深度暖木字墨对比度，跨行平滑圆润包裹
+   ========================================================================== */
+
+.search-highlight {
+  background: linear-gradient(180deg, rgba(254, 243, 199, 0.96) 0%, rgba(253, 230, 138, 0.96) 100%) !important;
+  color: #451A03 !important;
+  font-weight: 650 !important;
+  padding: 1px 4px 1.5px 4px !important;
+  margin: 0 1px !important;
+  border-radius: 4px !important;
+  border-bottom: 2px solid #F59E0B !important;
+  box-shadow: 
+    0 0 0 1px rgba(245, 158, 11, 0.35),
+    0 1.5px 4px -1px rgba(217, 119, 6, 0.22) !important;
+  text-decoration: none !important;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  display: inline !important;
+  transition: all 0.15s ease !important;
+}
+
+.search-highlight:hover {
+  background: linear-gradient(180deg, #FDE68A 0%, #FCD34D 100%) !important;
+  box-shadow: 
+    0 0 0 1.5px rgba(217, 119, 6, 0.6),
+    0 2px 6px -1px rgba(217, 119, 6, 0.35) !important;
+}
+
+/* ==========================================================================
+   TipTap 编辑器与展示端：四色彩虹荧光笔体系 (黄/绿/蓝/粉)
+   - 移除粗暴的 !important 覆盖，完整放行各色彩虹高亮
+   - 为各色精准注入高对比度字墨，绝无发灰发虚
+   ========================================================================== */
+
+.rich-rendered mark:not(.search-highlight),
+.tiptap mark:not(.search-highlight),
+.tiptap-container mark:not(.search-highlight) {
+  padding: 1px 4px !important;
+  margin: 0 1px;
+  border-radius: 4px;
+  font-weight: 550;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+/* 1. 默认无指定颜色时的温润浅黄兜底 */
+.rich-rendered mark:not([data-color]):not([style*="background"]):not(.search-highlight),
+.tiptap mark:not([data-color]):not([style*="background"]):not(.search-highlight) {
+  background-color: #FEF08A;
+  color: #713F12;
+}
+
+/* 2. 荧光黄 (#FEF08A) 专属字色 */
+mark[data-color="#FEF08A"], mark[style*="#FEF08A"], mark[style*="rgb(254, 240, 138)"] {
+  color: #713F12 !important;
+}
+
+/* 3. 青草绿 (#A7F3D0) 专属深林墨绿字色 */
+mark[data-color="#A7F3D0"], mark[style*="#A7F3D0"], mark[style*="rgb(167, 243, 208)"] {
+  color: #064E3B !important;
+}
+
+/* 4. 晴空蓝 (#BAE6FD) 专属深海藏青字色 */
+mark[data-color="#BAE6FD"], mark[style*="#BAE6FD"], mark[style*="rgb(186, 230, 253)"] {
+  color: #0C4A6E !important;
+}
+
+/* 5. 樱花粉 (#FDA4AF) 专属酒红浆果字色 */
+mark[data-color="#FDA4AF"], mark[style*="#FDA4AF"], mark[style*="rgb(253, 164, 175)"] {
+  color: #881337 !important;
+}

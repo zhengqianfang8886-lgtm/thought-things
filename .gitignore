@@ -1,0 +1,11 @@
+node_modules/*
+src-tauri/*
+release/*
+dist/*
+use.sh
+all_in_one.sh
+all_in_one.txt
+build.py
+use.py
+run.py
+ymouse_engine_config.json
