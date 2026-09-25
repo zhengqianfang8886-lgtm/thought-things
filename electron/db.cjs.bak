@@ -222,35 +222,6 @@ function isHtmlContentEmpty(raw) {
 // 统一调度执行命令
 async function handleInvoke(cmd, args = {}, electronHelpers = {}) {
   switch (cmd) {
-    case 'get_quote_by_id': {
-      const qId = args.quoteId;
-      if (!qId) return null;
-      const r = db.prepare(`
-        SELECT 
-          q.id, q.content, q.source, q.is_question, q.is_resolved, q.created_at,
-          (SELECT COUNT(DISTINCT ql.source_quote_id) FROM quote_links ql WHERE ql.target_quote_id = q.id) AS backlinks_count,
-          (SELECT COALESCE(json_group_array(t.name), '[]') FROM quote_tags qt JOIN tags t ON qt.tag_id = t.id WHERE qt.quote_id = q.id) AS tags_json,
-          (SELECT COALESCE(json_group_array(json_object('id', th.id, 'quote_id', th.quote_id, 'content', th.content, 'created_at', th.created_at, 'updated_at', th.updated_at)), '[]') FROM thoughts th WHERE th.quote_id = q.id ORDER BY th.created_at ASC) AS thoughts_json
-        FROM quotes q
-        WHERE q.id = ?
-      `).get(qId);
-      if (!r) return null;
-      return {
-        id: r.id,
-        content: decryptText(r.content),
-        source: r.source ? decryptText(r.source) : null,
-        is_question: r.is_question,
-        is_resolved: r.is_resolved,
-        created_at: r.created_at,
-        backlinks_count: r.backlinks_count || 0,
-        tags: JSON.parse(r.tags_json || '[]'),
-        thoughts: JSON.parse(r.thoughts_json || '[]').map(t => ({
-          ...t,
-          content: decryptText(t.content)
-        }))
-      };
-    }
-
     case 'get_backlinks': {
       const targetId = args.quoteId;
       if (!targetId) return [];
@@ -962,88 +933,6 @@ async function handleInvoke(cmd, args = {}, electronHelpers = {}) {
         md += `\n---\n\n`;
       }
       return md;
-    }
-
-    case 'get_tag_trends_analytics': {
-      const entryType = args.entryType !== undefined && args.entryType !== 'all' ? Number(args.entryType) : null;
-      const now = Date.now();
-      const dayMs = 86400000;
-      
-      let currentStart, currentEnd, prevStart, days;
-      if (args.startTs && args.endTs) {
-        currentStart = Number(args.startTs);
-        currentEnd = Number(args.endTs);
-        const span = Math.max(dayMs, currentEnd - currentStart);
-        days = Math.max(1, Math.round(span / dayMs));
-        prevStart = currentStart - span;
-      } else {
-        days = typeof args.days === 'number' && args.days > 0 ? args.days : 7;
-        currentStart = now - days * dayMs;
-        currentEnd = now;
-        prevStart = currentStart - days * dayMs;
-      }
-
-      let typeFilterSql = '';
-      const params = { currentStart, prevStart };
-      if (entryType !== null) {
-        typeFilterSql = ' AND q.is_question = @entryType ';
-        params.entryType = entryType;
-      }
-
-      params.currentEnd = currentEnd;
-      const rows = db.prepare(`
-        SELECT 
-          t.id, 
-          t.name,
-          COUNT(DISTINCT CASE WHEN q.created_at >= @currentStart AND q.created_at <= @currentEnd ${typeFilterSql} THEN q.id END) AS current_count,
-          COUNT(DISTINCT CASE WHEN q.created_at >= @prevStart AND q.created_at < @currentStart ${typeFilterSql} THEN q.id END) AS prev_count,
-          COUNT(DISTINCT CASE WHEN 1=1 ${typeFilterSql} THEN q.id END) AS total_count,
-          COUNT(DISTINCT CASE WHEN q.created_at >= @currentStart AND q.is_question = 0 THEN q.id END) AS quote_count,
-          COUNT(DISTINCT CASE WHEN q.created_at >= @currentStart AND q.is_question = 1 THEN q.id END) AS question_count,
-          COUNT(DISTINCT CASE WHEN q.created_at >= @currentStart AND q.is_question = 2 THEN q.id END) AS insight_count
-        FROM tags t
-        JOIN quote_tags qt ON t.id = qt.tag_id
-        JOIN quotes q ON qt.quote_id = q.id
-        GROUP BY t.id, t.name
-        HAVING current_count > 0
-        ORDER BY current_count DESC, (current_count - prev_count) DESC
-        LIMIT 25
-      `).all(params);
-
-      let totalSql = `SELECT COUNT(DISTINCT id) as total_recent_quotes FROM quotes WHERE created_at >= @currentStart AND created_at <= @currentEnd`;
-      if (entryType !== null) {
-        totalSql += ` AND is_question = @entryType`;
-      }
-      const totalNotesRow = db.prepare(totalSql).get(params);
-      const totalRecentQuotes = totalNotesRow ? totalNotesRow.total_recent_quotes : 0;
-
-      const items = rows.map(r => {
-        const delta = r.current_count - r.prev_count;
-        let momentum = 'stable';
-        if (r.prev_count === 0) momentum = 'new';
-        else if (delta >= 3) momentum = 'surging';
-        else if (delta > 0) momentum = 'rising';
-
-        return {
-          id: r.id,
-          name: r.name,
-          current_count: r.current_count,
-          prev_count: r.prev_count,
-          total_count: r.total_count,
-          quote_count: r.quote_count,
-          insight_count: r.insight_count,
-          question_count: r.question_count,
-          delta,
-          momentum,
-          ratio: totalRecentQuotes > 0 ? Math.round((r.current_count / totalRecentQuotes) * 100) : 0
-        };
-      });
-
-      return {
-        time_window_days: days,
-        total_recent_quotes: totalRecentQuotes,
-        trends: items
-      };
     }
 
     default:

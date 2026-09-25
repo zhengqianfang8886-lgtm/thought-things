@@ -240,25 +240,7 @@ export function useTags(
 
     const rows: FlatTagRow[] = [];
     const traverse = (node: InternalNode, depth: number) => {
-      // 根域收敛过滤：若选中了根领域，第 0 层仅遍历该领域分支
-      if (depth === 0 && selectedRootDomain.value && node.name === "root") {
-        const targetChild = node.children.get(selectedRootDomain.value);
-        if (targetChild) {
-          const hasChildren = targetChild.children.size > 0;
-          rows.push({
-            name: targetChild.name,
-            fullPath: targetChild.fullPath,
-            depth: 0,
-            count: targetChild.count,
-            totalCount: targetChild.totalCount,
-            hasChildren,
-            isExpanded: true,
-            isMatched: false,
-          });
-          if (hasChildren) traverse(targetChild, 1);
-        }
-        return;
-      }
+
       const childrenList = Array.from(node.children.values());
       if (sortBy === "count") {
         childrenList.sort((a, b) => b.totalCount - a.totalCount || a.name.localeCompare(b.name, "zh-CN"));

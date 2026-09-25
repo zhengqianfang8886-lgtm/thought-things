@@ -1,20 +1,18 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, watch, nextTick, onBeforeUnmount } from "vue";
 import { useEditor, EditorContent } from "@tiptap/vue-3";
-import Underline from "@tiptap/extension-underline";
 import StarterKit from "@tiptap/starter-kit";
 import Highlight from "@tiptap/extension-highlight";
 import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
 import Placeholder from "@tiptap/extension-placeholder";
 import { invoke } from "./ipc-bridge";
-import TulipDecor from "./components/TulipDecor.vue";
+import TulipDecor from "./TulipDecor.vue";
 import TreeRingStamp from "./components/TreeRingStamp.vue";
 import { QuoteRefExtension } from "./extensions/QuoteRefExtension";
 import TiptapEditor from "./components/TiptapEditor.vue";
 import ImageLightboxModal from "./components/modals/ImageLightboxModal.vue";
 import TagManagerModal from "./components/modals/TagManagerModal.vue";
-import TagTrendsView from "./components/TagTrendsView.vue";
 
 
 import type { Thought, QuoteDetail, AppLog, BacklinkItem } from "./types";
@@ -54,7 +52,7 @@ const modifierKey = computed(() => (isMac.value ? "⌘" : "Ctrl"));
 const knowledgeBase = useKnowledgeBase();
 const quotes = knowledgeBase.allQuotes;
 const totalQuotesCount = knowledgeBase.totalQuotesCount;
-const currentTab = ref<"capture" | "archive" | "pinned" | "trends">("capture");
+const currentTab = ref<"capture" | "archive" | "pinned">("capture");
 const entryType = ref<0 | 1 | 2>(0); // 0: 客观摘录, 1: 待解之问, 2: 原生感悟
 const isEntryQuestion = computed(() => entryType.value === 1);
 const filterOnlyQuestions = ref(false);
@@ -100,8 +98,7 @@ const quoteLinksEngine = useQuoteLinks(
     if (focusQuote.value) closeFocusMode();
     currentTab.value = "archive"; 
   },
-  selectedEntryTypeFilter,
-  knowledgeBase.quoteLookupMap
+  selectedEntryTypeFilter
 );
 
 const securityEngine = useSecurity(
@@ -142,7 +139,11 @@ const displayedQuotes = computed(() => {
   } else if (selectedEntryTypeFilter.value === 'insight') {
     return baseList.filter((q) => q.is_question === 2);
   } else if (selectedEntryTypeFilter.value === 'question') {
-    return baseList.filter((q) => q.is_question === 1);
+    return baseList.filter((q) => {
+      if (q.is_question === 1) return true;
+      const plain = (q.content || '').replace(/<[^>]+>/g, '').trim();
+      return plain.endsWith('?') || plain.endsWith('？');
+    });
   } else if (selectedEntryTypeFilter.value === 'has_thought') {
     // 核心激活：仅返回至少拥有一条思考年轮的手记
     return baseList.filter((q) => q.thoughts && q.thoughts.length > 0);
@@ -216,57 +217,6 @@ const pinnedQuotesList = computed<QuoteDetail[]>(() => {
   }
   return result;
 });
-
-// ----------------- 常看卡片原生拖拽排序管线 -----------------
-const draggingPinnedIndex = ref<number | null>(null);
-const dragOverPinnedIndex = ref<number | null>(null);
-
-const handlePinnedDragStart = (e: DragEvent, index: number) => {
-  draggingPinnedIndex.value = index;
-  if (e.dataTransfer) {
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', String(index));
-  }
-};
-
-const handlePinnedDragOver = (e: DragEvent, index: number) => {
-  e.preventDefault();
-  if (e.dataTransfer) {
-    e.dataTransfer.dropEffect = 'move';
-  }
-  if (dragOverPinnedIndex.value !== index) {
-    dragOverPinnedIndex.value = index;
-  }
-};
-
-const handlePinnedDragLeave = (_e: DragEvent, index: number) => {
-  if (dragOverPinnedIndex.value === index) {
-    dragOverPinnedIndex.value = null;
-  }
-};
-
-const handlePinnedDrop = (e: DragEvent, targetIndex: number) => {
-  e.preventDefault();
-  const sourceIndex = draggingPinnedIndex.value;
-  draggingPinnedIndex.value = null;
-  dragOverPinnedIndex.value = null;
-
-  if (sourceIndex === null || sourceIndex === targetIndex) return;
-
-  // 原地重排置顶 ID 数组
-  const updatedIds = [...pinnedQuoteIds.value];
-  const [movedId] = updatedIds.splice(sourceIndex, 1);
-  updatedIds.splice(targetIndex, 0, movedId);
-
-  pinnedQuoteIds.value = updatedIds;
-  localStorage.setItem(PINNED_STORAGE_KEY, JSON.stringify(updatedIds));
-  showToast('✓ 已更新常看优先级顺序');
-};
-
-const handlePinnedDragEnd = () => {
-  draggingPinnedIndex.value = null;
-  dragOverPinnedIndex.value = null;
-};
 
 // ----------------- 卡片交互控制 -----------------
 const activeActionCardId = ref<string | null>(null);
@@ -351,7 +301,6 @@ const RECENT_SOURCES_KEY = "tr_recent_sources";
 const inputQuote = ref(localStorage.getItem(DRAFT_KEY_QUOTE) || "");
 const inputSource = ref(localStorage.getItem(DRAFT_KEY_SOURCE) || "");
 const inputThought = ref(localStorage.getItem(DRAFT_KEY_THOUGHT) || "");
-const isThoughtExpanded = ref(Boolean(inputThought.value && inputThought.value.trim()));
 
 // 图片持久化与 TipTap 自动嵌入管线
 const saveFileAndInsert = (file: File, targetEditor: any) => {
@@ -401,7 +350,6 @@ const handleEditorImagePaste = (event: ClipboardEvent, targetEditor: any): boole
 const editor = useEditor({
   content: inputQuote.value,
   extensions: [
-    Underline,
     QuoteRefExtension,
     StarterKit.configure({
       heading: { levels: [1, 2] },
@@ -418,6 +366,7 @@ const editor = useEditor({
   },
   onUpdate: ({ editor: e }) => {
     inputQuote.value = e.getHTML();
+    handleQuoteInput();
   },
 });
 
@@ -425,7 +374,6 @@ const editor = useEditor({
 const thoughtEditor = useEditor({
   content: inputThought.value,
   extensions: [
-    Underline,
     QuoteRefExtension,
     StarterKit,
     Highlight.configure({ multicolor: true }),
@@ -474,8 +422,12 @@ const rememberSource = (src: string) => {
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
 const thoughtTextareaRef = ref<HTMLTextAreaElement | null>(null);
 
-// 用户手动选择的模式具有绝对权威，不再根据问号强制篡改
-const handleQuoteInput = () => {};
+const handleQuoteInput = () => {
+  const plain = inputQuote.value.replace(/<[^>]+>/g, "").replace(/&nbsp;/gi, " ").trim();
+  if (plain.endsWith("?") || plain.endsWith("？")) {
+    if (entryType.value === 0) entryType.value = 1;
+  }
+};
 
 
 
@@ -594,113 +546,6 @@ const appendThoughtContent = ref("");
 const editingThoughtId = ref<string | null>(null);
 const editingThoughtText = ref("");
 
-// 全局心流沉浸模态编辑状态
-const zenEditorRef = ref<any>(null);
-const zenEditState = ref({
-  isOpen: false,
-  type: 'thought' as 'quote' | 'thought',
-  id: '',
-  title: '沉浸式编辑思维年轮',
-  content: ''
-});
-
-const openZenEditForThought = (t: Thought) => {
-  const textToEdit = (editingThoughtId.value === t.id && editingThoughtText.value)
-    ? editingThoughtText.value
-    : t.content;
-
-  zenEditState.value = {
-    isOpen: true,
-    type: 'thought',
-    id: t.id,
-    title: '沉浸式编辑 · 思维年轮',
-    content: textToEdit
-  };
-};
-
-const openZenEditForQuote = (card: QuoteDetail) => {
-  const textToEdit = (editingQuoteId.value === card.id && editingQuoteContent.value)
-    ? editingQuoteContent.value
-    : card.content;
-
-  zenEditState.value = {
-    isOpen: true,
-    type: 'quote',
-    id: card.id,
-    title: '沉浸式编辑 · 典藏原句',
-    content: textToEdit
-  };
-};
-
-const cancelZenEdit = () => {
-  zenEditState.value.isOpen = false;
-};
-
-const saveZenEdit = async () => {
-  if (!zenEditState.value.isOpen) return;
-
-  // 1. 【核心突破】直接穿透 TipTap 实例直取实时 HTML，杜绝 v-model 异步延迟造成的丢字与空值
-  let liveHtml = '';
-  if (zenEditorRef.value?.editor) {
-    liveHtml = zenEditorRef.value.editor.getHTML();
-  } else {
-    liveHtml = zenEditState.value.content || '';
-  }
-
-  const cleanContent = liveHtml.trim();
-
-  // 校验实质内容
-  const stripped = cleanContent.replace(/<[^>]*>/g, '').replace(/&nbsp;/gi, ' ').trim();
-  if (!stripped && !cleanContent.includes('<img')) {
-    showToast("内容不能为空");
-    return;
-  }
-
-  const { type, id } = zenEditState.value;
-  // 2. 立即关闭弹窗
-  zenEditState.value.isOpen = false;
-
-  try {
-    if (type === 'thought') {
-      // 3. 关闭行内编辑状态，防止卡片旧状态占位
-      editingThoughtId.value = null;
-      editingThoughtText.value = "";
-
-      // 4. 写入 SQLite 数据库
-      await invoke("update_thought", { thoughtId: id, content: cleanContent });
-      richTextEngine.extractAndPreload(cleanContent);
-      showToast("✓ 年轮思考已保存");
-
-    } else if (type === 'quote') {
-      // 3. 关闭原句行内编辑状态
-      editingQuoteId.value = null;
-      editingQuoteContent.value = "";
-      editingQuoteSource.value = "";
-
-      const card = knowledgeBase.getQuote(id) || quotes.value.find(q => q.id === id);
-      const source = card?.source || null;
-      const entryType = card?.is_question !== undefined ? card.is_question : 0;
-
-      // 4. 写入 SQLite 数据库
-      await invoke("update_quote", {
-        quoteId: id,
-        content: cleanContent,
-        source,
-        isQuestion: entryType === 1,
-        entryType
-      });
-      richTextEngine.extractAndPreload(cleanContent);
-      showToast("✓ 原句已保存");
-    }
-
-    // 5. 【关键刷新】重新拉取最新数据，触发全界面 100% 响应式重绘！
-    await loadData(false);
-
-  } catch (err: any) {
-    showToast("保存失败: " + (err?.message || err));
-  }
-};
-
 const startAppendThought = (quoteId: string) => {
   appendThoughtContent.value = "";
   activeAppendQuoteId.value = quoteId;
@@ -773,7 +618,8 @@ const requestDeleteThought = (thoughtId: string) => {
   }
 };
 
-const doDeleteThought = async (thoughtId: string) => {
+const doDeleteThought = (thoughtId: string) => {
+  // 寻找所属卡片与该年轮对象
   let parentQuoteId: string | null = null;
   let targetThought: Thought | null = null;
   for (const q of knowledgeBase.allQuotes.value) {
@@ -785,27 +631,27 @@ const doDeleteThought = async (thoughtId: string) => {
     }
   }
 
-  // 1. 内存中 0ms 瞬间抹除
   knowledgeBase.removeThought(thoughtId);
+  commitPendingUndo();
 
-  // 2. 将完整对象推入长效撤销栈（只要不关软件，随时撤销）
   if (parentQuoteId && targetThought) {
-    undoStack.value.push({
+    const timerId = setTimeout(async () => {
+      try {
+        await invoke("delete_thought", { thoughtId });
+      } catch (e) {
+        console.error("异步删除思考失败", e);
+      }
+      if (pendingUndo.value?.id === thoughtId) pendingUndo.value = null;
+    }, 6000);
+
+    pendingUndo.value = {
       id: thoughtId,
       type: 'thought',
       title: '年轮认知',
       data: { quoteId: parentQuoteId, thought: targetThought },
-    });
-    if (undoStack.value.length > 50) undoStack.value.shift();
-  }
-
-  showToast('🗑️ 已删除年轮认知 (按 Ctrl+Z 可随时撤销)');
-
-  // 3. 异步物理同步数据库
-  try {
-    await invoke("delete_thought", { thoughtId });
-  } catch (e) {
-    console.error("物理删除思考失败", e);
+      timerId,
+    };
+    showToast('🗑️ 已删除年轮认知', 6000);
   }
 };
 
@@ -825,93 +671,80 @@ const requestDeleteQuote = (quoteId: string) => {
   }
 };
 
-// ----------------- 会话级长效撤销栈 (Desktop-Grade Undo History Stack) -----------------
-interface UndoStackAction {
+// ----------------- 误删恢复与操作撤销机制 (Undo Safety Net) -----------------
+interface PendingUndoAction {
   id: string;
   type: 'quote' | 'thought';
   title: string;
   data: any;
+  timerId: any;
 }
-// 维护真正的历史撤销栈，只要软件开着，永久可逐层撤回（上限 50 步）
-const undoStack = ref<UndoStackAction[]>([]);
-const hasUndoHistory = computed(() => undoStack.value.length > 0);
+const pendingUndo = ref<PendingUndoAction | null>(null);
 
-const executeUndo = async () => {
-  if (undoStack.value.length === 0) return;
-  const action = undoStack.value.pop()!;
-
-  if (action.type === 'quote') {
-    const card = action.data as QuoteDetail;
-    // 1. 0ms 瞬间复原内存真理源
-    knowledgeBase.upsertQuote(card);
-    showToast(`✓ 已恢复手记: ${action.title} (按 Ctrl+Z 可继续撤销)`);
-
-    // 2. 界面定位回该卡片并亮起到达动效
-    await nextTick();
-    virtualScrollEngine.scrollToKey(action.id);
-    quoteLinksEngine.highlightedQuoteId.value = action.id;
-    setTimeout(() => {
-      if (quoteLinksEngine.highlightedQuoteId.value === action.id) {
-        quoteLinksEngine.highlightedQuoteId.value = null;
-      }
-    }, 2400);
-
-    // 3. 将整篇手记完整回写至底层 SQLite 数据库
-    try {
-      await invoke("import_backup", {
-        jsonStr: JSON.stringify({ records: [card] })
-      });
-    } catch (e) {
-      console.error("恢复手记落盘失败:", e);
+const commitPendingUndo = async () => {
+  if (!pendingUndo.value) return;
+  const action = pendingUndo.value;
+  clearTimeout(action.timerId);
+  pendingUndo.value = null;
+  try {
+    if (action.type === 'quote') {
+      await invoke('delete_quote', { quoteId: action.id });
+    } else if (action.type === 'thought') {
+      await invoke('delete_thought', { thoughtId: action.id });
     }
-
-  } else if (action.type === 'thought') {
-    const { quoteId, thought } = action.data;
-    // 1. 内存真理源追加
-    knowledgeBase.appendThought(quoteId, thought);
-    showToast(`✓ 已恢复思维年轮`);
-    await nextTick();
-    virtualScrollEngine.scrollToKey(quoteId);
-
-    // 2. 回写思考到数据库
-    try {
-      await invoke("append_thought", {
-        quoteId: quoteId,
-        content: thought.content
-      });
-    } catch (e) {
-      console.error("恢复思考落盘失败:", e);
-    }
+  } catch (e) {
+    console.error("异步物理落盘删除失败", e);
   }
 };
 
-const doDeleteQuote = async (quoteId: string) => {
+const executeUndo = () => {
+  if (!pendingUndo.value) return;
+  const action = pendingUndo.value;
+  clearTimeout(action.timerId);
+
+  if (action.type === 'quote') {
+    knowledgeBase.upsertQuote(action.data);
+    showToast(`✓ 已成功恢复手记: ${action.title}`);
+  } else if (action.type === 'thought') {
+    knowledgeBase.appendThought(action.data.quoteId, action.data.thought);
+    showToast(`✓ 已成功恢复思维年轮`);
+  }
+  pendingUndo.value = null;
+};
+
+const doDeleteQuote = (quoteId: string) => {
   const card = knowledgeBase.getQuote(quoteId);
   if (!card) return;
   const snapshot = JSON.parse(JSON.stringify(card));
 
-  // 1. 内存中 0ms 瞬间抹除
+  // 1. 内存中 0ms 瞬间抹除 (UI 即刻响应)
   knowledgeBase.removeQuote(quoteId);
   if (focusQuote.value && focusQuote.value.id === quoteId) closeFocusMode();
 
-  // 2. 推入会话长效撤销栈 (支持任意时刻按 Ctrl+Z 找回)
+  // 若此前已有待删除任务，立即结清入库
+  commitPendingUndo();
+
+  // 2. 启动 6 秒撤销保护期 (6 秒内点击撤销即可瞬间复原)
+  const timerId = setTimeout(async () => {
+    try {
+      await invoke("delete_quote", { quoteId });
+    } catch (e) {
+      console.error("异步删除落盘失败", e);
+    }
+    if (pendingUndo.value?.id === quoteId) {
+      pendingUndo.value = null;
+    }
+  }, 6000);
+
   const cleanTitle = card.source ? `《${card.source}》` : (card.content.replace(/<[^>]+>/g, '').slice(0, 14) || '手记');
-  undoStack.value.push({
+  pendingUndo.value = {
     id: quoteId,
     type: 'quote',
     title: cleanTitle,
     data: snapshot,
-  });
-  if (undoStack.value.length > 50) undoStack.value.shift();
-
-  showToast(`🗑️ 已删除 ${cleanTitle} (按 Ctrl+Z 随时恢复)`);
-
-  // 3. 底层数据库即刻执行物理删除，保证底层数据纯净
-  try {
-    await invoke("delete_quote", { quoteId });
-  } catch (e) {
-    console.error("物理删除落盘失败", e);
-  }
+    timerId,
+  };
+  showToast(`🗑️ 已删除 ${cleanTitle}`, 6000);
 };
 
 const handleToggleResolved = async (quoteId: string) => {
@@ -984,13 +817,8 @@ const isCardThoughtsExpanded = (cardId: string): boolean => { return expandedTho
 const expandedBacklinkCardIds = ref<Record<string, boolean>>({});
 
 // 纯前端本地 0ms 开关，数据直通 knowledgeBase，彻底告别旧缓存与网络等待
-const toggleBacklinks = async (quoteId: string) => {
-  const willExpand = !expandedBacklinkCardIds.value[quoteId];
-  expandedBacklinkCardIds.value[quoteId] = willExpand;
-  if (willExpand) {
-    // 0ms 打开抽屉，按需异步拉取该条手记的精准反链明细，杜绝全库扫表
-    await knowledgeBase.loadBacklinksForQuote(quoteId);
-  }
+const toggleBacklinks = (quoteId: string) => {
+  expandedBacklinkCardIds.value[quoteId] = !expandedBacklinkCardIds.value[quoteId];
 };
 
 // 专注模式
@@ -1044,6 +872,7 @@ const handleAppendThoughtInFocus = async () => {
 
     // 2. 异步落盘并与后端数据库校验同步
     await loadData();
+    await quoteLinksEngine.fetchAllQuotesSilently();
 
     // 维持响应式引用最新
     const refreshed = quotes.value.find((q) => q.id === targetQuoteId) || quoteLinksEngine.quoteLookupMap.value[targetQuoteId];
@@ -1288,17 +1117,6 @@ const applySettings = () => {
 
 watch([currentTheme, currentFontSize], applySettings);
 
-watch(currentTab, (newTab) => {
-  if (newTab === 'archive') {
-    nextTick(() => {
-      if (archiveContainerRef.value) {
-        virtualScrollEngine.scrollContainerRef.value = archiveContainerRef.value;
-        virtualScrollEngine.syncViewport();
-      }
-    });
-  }
-});
-
 // (全量数据已常驻内存，分类切换由 computed 0ms 即时响应)
 
 // 剪贴板与本地图文
@@ -1401,22 +1219,6 @@ const handleGlobalKeyDown = (e: KeyboardEvent) => {
 
   const isMod = isMac.value ? e.metaKey : e.ctrlKey;
   if (isMod) {
-    // 监听 Ctrl+Z / Cmd+Z：当存在待撤销操作且未处于输入框内部编辑时，瞬间触发撤销恢复
-    if (e.key.toLowerCase() === 'z' && !e.shiftKey) {
-      const activeEl = document.activeElement;
-      const isTyping = activeEl && (
-        activeEl.tagName === 'INPUT' ||
-        activeEl.tagName === 'TEXTAREA' ||
-        activeEl.getAttribute('contenteditable') === 'true' ||
-        activeEl.classList.contains('ProseMirror')
-      );
-      if (!isTyping && hasUndoHistory.value) {
-        e.preventDefault();
-        executeUndo();
-        return;
-      }
-    }
-
     if (e.key === "\\") {
       e.preventDefault();
       timelineEngine.toggleSidebar();
@@ -1424,7 +1226,6 @@ const handleGlobalKeyDown = (e: KeyboardEvent) => {
     else if (e.key === "1") { e.preventDefault(); currentTab.value = "capture"; }
     else if (e.key === "2") { e.preventDefault(); currentTab.value = "archive"; }
     else if (e.key === "3") { e.preventDefault(); currentTab.value = "pinned"; }
-    else if (e.key === "4") { e.preventDefault(); currentTab.value = "trends"; }
     else if (e.key === "Enter" && currentTab.value === "capture") { e.preventDefault(); handleCreateQuote(); }
     else if (e.key === "l") { e.preventDefault(); securityEngine.lockAppNow(); }
     else if (e.key === "d") { e.preventDefault(); isLogModalOpen.value = !isLogModalOpen.value; }
@@ -1575,6 +1376,7 @@ const saveFocusEditQuote = async () => {
       entryType: focusQuote.value.is_question, // 完整传递三态类型(0摘录/1问题/2感悟)，杜绝类型篡改
     });
     await loadData();
+    await quoteLinksEngine.fetchAllQuotesSilently();
   } catch (err: any) {
     showToast("勘误保存失败: " + (err?.message || err));
   }
@@ -1626,6 +1428,7 @@ const saveFocusEditThought = async () => {
       content: newContent,
     });
     await loadData();
+    await quoteLinksEngine.fetchAllQuotesSilently();
   } catch (err: any) {
     showToast("勘误保存失败: " + (err?.message || err));
   }
@@ -1660,7 +1463,8 @@ const handleImportFileInputChange = (e: Event) => {
 
       showToast(`✓ 成功导入 ${stats.imported_quotes} 篇手记，${stats.imported_thoughts} 层年轮！`);
       await loadData();
-      } catch (err: any) {
+      await quoteLinksEngine.fetchAllQuotesSilently();
+    } catch (err: any) {
       showToast("导入失败: " + (err?.message || err));
     } finally {
       isImporting.value = false;
@@ -1691,8 +1495,8 @@ const handleImportFileInputChange = (e: Event) => {
         :class="{ 'animate-shake': securityEngine.isUnlockFailed.value }"
       >
         <div class="w-16 h-16 rounded-full p-[3px] bg-gradient-to-tr from-emerald-400 via-teal-400 to-amber-300 shadow-md flex items-center justify-center animate-pulse">
-          <div class="w-full h-full rounded-full bg-white flex items-center justify-center overflow-hidden p-2">
-            <img src="/logo.png" alt="Logo" class="w-full h-full object-contain pointer-events-none select-none" />
+          <div class="w-full h-full rounded-full bg-white flex items-center justify-center text-2xl">
+            🐾
           </div>
         </div>
         <div>
@@ -1723,13 +1527,13 @@ const handleImportFileInputChange = (e: Event) => {
       <!-- 左侧：品牌 Logo 与名称 (自适应缩容) -->
       <div class="flex items-center gap-2 sm:gap-2.5 shrink-0">
         <div class="w-8 h-8 rounded-xl p-[2px] bg-gradient-to-tr from-emerald-400 via-teal-400 to-amber-300 shadow-2xs flex items-center justify-center shrink-0">
-          <div class="w-full h-full rounded-xl bg-white flex items-center justify-center overflow-hidden p-0.5">
-            <img src="/logo.png" alt="Logo" class="w-full h-full object-contain pointer-events-none select-none" />
+          <div class="w-full h-full rounded-xl bg-white flex items-center justify-center overflow-hidden">
+            <span class="text-sm">🐾</span>
           </div>
         </div>
         <div class="flex items-center whitespace-nowrap">
           <span class="font-extrabold text-sm sm:text-base tracking-tight bg-gradient-to-r from-slate-900 to-emerald-900 bg-clip-text text-transparent">ThoughtRings</span>
-          <span class="text-[10px] px-1.5 py-0.2 rounded-full bg-emerald-100/80 text-emerald-800 font-mono font-bold ml-1.5 hidden min-[900px]:inline">v1.0</span>
+          <span class="text-[10px] px-1.5 py-0.2 rounded-full bg-emerald-100/80 text-emerald-800 font-mono font-bold ml-1.5 hidden min-[900px]:inline">v0.2</span>
         </div>
       </div>
 
@@ -1773,16 +1577,6 @@ const handleImportFileInputChange = (e: Event) => {
           </span>
           <span class="text-[10.5px] opacity-40 font-mono hidden min-[1020px]:inline">{{ modifierKey }}3</span>
         </button>
-
-        <button 
-          type="button"
-          @click="currentTab = 'trends'"
-          class="flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 rounded-full text-xs sm:text-sm font-bold transition-all cursor-pointer whitespace-nowrap shrink-0"
-          :class="currentTab === 'trends' ? 'bg-white text-emerald-900 shadow-2xs' : 'text-slate-500 hover:text-slate-900'"
-        >
-          <span>📈 脉动</span>
-          <span class="text-[10.5px] opacity-40 font-mono hidden min-[1020px]:inline">{{ modifierKey }}4</span>
-        </button>
       </nav>
 
       <!-- 右侧：动作按钮组 (紧凑胶囊，图标与文字紧密协同) -->
@@ -1824,180 +1618,154 @@ const handleImportFileInputChange = (e: Event) => {
       </div>
     </header>
 
-    <!-- 3. 主记录工作台 (单栏心流手记台 · 渐进式年轮萌发) -->
-    <section v-if="currentTab === 'capture'" class="flex-1 min-h-0 w-full px-4 sm:px-6 py-3 sm:py-4 overflow-hidden flex flex-col max-w-4xl mx-auto">
-      <div class="flex-1 min-h-0 w-full flex flex-col rounded-3xl bg-white border border-emerald-950/[0.08] shadow-sm overflow-hidden focus-within:border-emerald-500/80 focus-within:ring-2 focus-within:ring-emerald-400/20 transition-all">
+    <!-- 3. 主记录工作台 (高对比生机活页手记台 - 纯净独占) -->
+    <section v-if="currentTab === 'capture'" class="flex-1 min-h-0 w-full px-5 sm:px-7 py-3 sm:py-4 overflow-hidden flex flex-col max-w-7xl mx-auto">
+      <div class="flex-1 min-h-0 w-full flex flex-col md:flex-row gap-4 overflow-hidden">
         
-        <!-- 1. 模式选择与快捷操作栏 -->
-        <div class="shrink-0 h-11 px-4 border-b border-slate-100 bg-slate-50/70 flex items-center justify-between gap-2">
-          <!-- 模式切换分段器 -->
-          <div class="flex items-center p-0.5 rounded-xl bg-slate-200/60 border border-slate-200/80">
-            <button 
-              type="button"
-              @click="entryType = 0"
-              class="px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer"
-              :class="entryType === 0 ? 'bg-white text-emerald-900 shadow-2xs' : 'text-slate-500 hover:text-slate-900'"
-            >
-              📖 摘录
-            </button>
-            <button 
-              type="button"
-              @click="entryType = 2"
-              class="px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1"
-              :class="entryType === 2 ? 'bg-indigo-600 text-white shadow-2xs' : 'text-slate-500 hover:text-slate-900'"
-            >
-              <span>💡 感悟</span>
-            </button>
-            <button 
-              type="button"
-              @click="entryType = 1"
-              class="px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1"
-              :class="entryType === 1 ? 'bg-amber-500 text-white shadow-2xs' : 'text-slate-500 hover:text-slate-900'"
-            >
-              <span>❓ 问题</span>
-            </button>
-          </div>
-
-          <!-- 右侧轻量存图与粘贴 -->
-          <div class="flex items-center gap-1.5">
-            <button 
-              @click="triggerSelectImage"
-              title="存入本地图片"
-              class="px-2.5 py-1 rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-semibold flex items-center gap-1 transition active:scale-95 cursor-pointer shadow-2xs"
-            >
-              <span>📷 存图</span>
-            </button>
-            <button 
-              @click="smartPasteButtonAction" 
-              title="粘贴截图或文本"
-              class="px-2.5 py-1 rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-semibold flex items-center gap-1 transition active:scale-95 cursor-pointer shadow-2xs"
-            >
-              <span>📋 粘贴</span>
-            </button>
-          </div>
-        </div>
-
-        <!-- 2. 排版工具栏 -->
-        <div class="shrink-0 px-3.5 py-1.5 bg-slate-50/40 border-b border-slate-100 flex items-center gap-1 overflow-x-auto stable-scroll select-none">
-          <button type="button" @click="editor?.chain().focus().toggleHeading({ level: 1 }).run()" title="H1 标题" class="px-1.5 h-6 rounded-md hover:bg-slate-200/70 text-xs font-bold text-slate-700 cursor-pointer">H1</button>
-          <button type="button" @click="editor?.chain().focus().toggleHeading({ level: 2 }).run()" title="H2 标题" class="px-1.5 h-6 rounded-md hover:bg-slate-200/70 text-xs font-bold text-slate-700 cursor-pointer">H2</button>
-          <span class="w-[1px] h-3.5 bg-slate-200 mx-0.5"></span>
-
-          <button type="button" @click="editor?.chain().focus().toggleBold().run()" title="加粗" class="w-6 h-6 rounded-md hover:bg-slate-200/70 text-xs font-bold text-slate-700 flex items-center justify-center cursor-pointer">B</button>
-          <button type="button" @click="editor?.chain().focus().toggleItalic().run()" title="斜体" class="w-6 h-6 rounded-md hover:bg-slate-200/70 text-xs italic text-slate-700 flex items-center justify-center cursor-pointer">I</button>
-          <button type="button" @click="editor?.chain().focus().toggleUnderline().run()" title="下划线" class="w-6 h-6 rounded-md hover:bg-slate-200/70 text-xs underline font-medium text-slate-700 flex items-center justify-center cursor-pointer">U</button>
-          <button type="button" @click="editor?.chain().focus().toggleStrike().run()" title="删除线" class="w-6 h-6 rounded-md hover:bg-slate-200/70 text-xs line-through text-slate-700 flex items-center justify-center cursor-pointer">S</button>
-          <span class="w-[1px] h-3.5 bg-slate-200 mx-0.5"></span>
-
-          <!-- 彩虹高亮荧光笔 -->
-          <button type="button" @click="editor?.chain().focus().toggleHighlight({ color: '#FEF08A' }).run()" title="荧光黄" class="w-3.5 h-3.5 rounded-full bg-amber-300 hover:scale-110 cursor-pointer shadow-2xs mx-0.5"></button>
-          <button type="button" @click="editor?.chain().focus().toggleHighlight({ color: '#A7F3D0' }).run()" title="青草绿" class="w-3.5 h-3.5 rounded-full bg-emerald-400 hover:scale-110 cursor-pointer shadow-2xs mx-0.5"></button>
-          <button type="button" @click="editor?.chain().focus().toggleHighlight({ color: '#BAE6FD' }).run()" title="晴空蓝" class="w-3.5 h-3.5 rounded-full bg-sky-400 hover:scale-110 cursor-pointer shadow-2xs mx-0.5"></button>
-          <button type="button" @click="editor?.chain().focus().toggleHighlight({ color: '#FDA4AF' }).run()" title="樱花粉" class="w-3.5 h-3.5 rounded-full bg-rose-300 hover:scale-110 cursor-pointer shadow-2xs mx-0.5"></button>
-          <span class="w-[1px] h-3.5 bg-slate-200 mx-0.5"></span>
-
-          <!-- 打勾清单 -->
-          <button type="button" @click="editor?.chain().focus().toggleTaskList().run()" title="打勾清单" class="px-2 h-6 rounded-md hover:bg-emerald-100/70 text-xs font-bold text-emerald-800 flex items-center gap-1 cursor-pointer">
-            <span>☑ 清单</span>
-          </button>
-          <button type="button" @click="editor?.chain().focus().toggleBlockquote().run()" title="引用块" class="w-6 h-6 rounded-md hover:bg-slate-200/70 text-xs text-slate-700 flex items-center justify-center cursor-pointer">❞</button>
-        </div>
-
-        <!-- 3. 主画布书写区 (宽广通透的心流视野) -->
-        <div class="flex-1 min-h-0 relative p-5 sm:p-6 bg-white overflow-y-auto stable-scroll">
-          <editor-content 
-            :editor="editor" 
-            class="tiptap-container w-full h-full text-base sm:text-[17px] leading-[1.85] text-[#0F172A] font-serif"
-          />
-        </div>
-
-        <!-- 4. 出处背景输入行（高质感典雅输入槽） -->
-        <div class="shrink-0 px-5 py-2.5 bg-gradient-to-b from-[#FAFBF9] to-[#F4F6F3]/60 border-t border-emerald-950/[0.06] flex items-center gap-3">
-          <div class="flex-1 flex items-center gap-2.5 px-3 py-1.5 rounded-2xl bg-white border border-slate-200/90 hover:border-emerald-300 focus-within:border-emerald-500 focus-within:ring-2 focus-within:ring-emerald-400/20 shadow-2xs transition-all duration-150 group">
-            <!-- 动态三态徽章 -->
-            <span 
-              class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-xl text-[11px] font-bold tracking-tight shrink-0 select-none shadow-2xs border transition-colors"
-              :class="entryType === 2 
-                ? 'bg-indigo-50 text-indigo-800 border-indigo-200/80' 
-                : (entryType === 1 
-                  ? 'bg-amber-50 text-amber-800 border-amber-200/80' 
-                  : 'bg-emerald-50 text-emerald-800 border-emerald-200/80')"
-            >
-              <span>{{ entryType === 2 ? '💡 场景契机' : (entryType === 1 ? '❓ 背景线索' : '📚 文献出处') }}</span>
-            </span>
-
-            <!-- 清爽输入本体 -->
-            <input 
-              type="text"
-              v-model="inputSource"
-              :placeholder="entryType === 2 
-                ? '记录萌发场景（如：深夜散步、与朋友讨论、晨跑顿悟...）' 
-                : (entryType === 1 
-                  ? '记录问题背景或领域（如：认知神经科学 / 组织管理 / 个人成长...）' 
-                  : '书名、作者、篇名或页码（如：《置身事内》P120、播客第12期...）')" 
-              class="flex-1 text-xs text-[#0F172A] placeholder-slate-400 bg-transparent focus:outline-none font-serif leading-relaxed"
-            />
-
-            <!-- 快捷清空 -->
-            <button 
-              v-if="inputSource"
-              type="button"
-              @click="inputSource = ''"
-              title="清空出处"
-              class="text-slate-300 hover:text-slate-600 text-xs font-bold px-1 transition cursor-pointer"
-            >✕</button>
-          </div>
-
-          <!-- 右侧最近出处快捷胶囊池 -->
-          <div v-if="recentSources.length > 0 && !inputSource" class="hidden md:flex items-center gap-1.5 shrink-0">
-            <span class="text-[10px] text-slate-400 font-mono">历史:</span>
-            <button 
-              v-for="s in recentSources.slice(0, 3)" 
-              :key="s"
-              type="button"
-              @click="inputSource = s"
-              class="text-[11px] px-2.5 py-1 rounded-xl bg-white hover:bg-emerald-50 hover:text-emerald-900 hover:border-emerald-300 text-slate-600 transition-all cursor-pointer border border-slate-200 shadow-2xs truncate max-w-[125px] active:scale-95"
-              :title="s"
-            >
-              {{ s }}
-            </button>
-          </div>
-        </div>
-
-        <!-- 5. 渐进式年轮萌发槽 (默认收起为一个雅致的微胶囊，点击平滑展开) -->
-        <div class="shrink-0 px-5 py-2 bg-[#F8FAF7] border-t border-emerald-950/[0.05] flex flex-col gap-2">
+        <!-- 左栏：核心采撷台 (60% 宽度，通透高对比纯白瓷纸) -->
+        <div class="flex-1 flex flex-col h-full min-h-0 rounded-3xl bg-white border border-emerald-950/[0.08] shadow-sm overflow-hidden focus-within:border-emerald-500 focus-within:ring-2 focus-within:ring-emerald-400/20 transition-all">
           
-          <!-- 折叠触发按钮 (无思考时呈现) -->
-          <div v-if="!isThoughtExpanded" class="flex items-center justify-between">
-            <button 
-              type="button" 
-              @click="isThoughtExpanded = true"
-              class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100/80 border border-emerald-200/80 transition-all cursor-pointer group shadow-2xs select-none"
-            >
-              <span class="w-3.5 h-3.5 rounded-full bg-emerald-200 group-hover:bg-emerald-300 flex items-center justify-center text-[10px] font-bold text-emerald-900">+</span>
-              <span>附带当下思考 (思维年轮)</span>
-              <span class="text-[10px] text-slate-400 font-mono font-normal">可选</span>
-            </button>
-            <span class="text-[10.5px] font-mono text-slate-400 hidden sm:inline">日后随时可在年轮流中追加新演进</span>
-          </div>
-
-          <!-- 展开后的伴随年轮编辑框 -->
-          <div v-else class="flex flex-col gap-2 pt-1 animate-fade-in">
-            <div class="flex items-center justify-between text-xs">
-              <span class="font-bold text-emerald-900 flex items-center gap-1.5">
-                <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
-                <span>🌱 第一层思维年轮 (记录第一直觉、反思或解题假设)</span>
-              </span>
+          <!-- 模式切换与轻量存图 -->
+          <div class="shrink-0 h-12 px-4 border-b border-slate-100 bg-slate-50/70 flex items-center justify-between gap-2">
+            <div class="flex items-center p-0.5 rounded-xl bg-slate-200/60 border border-slate-200/80">
               <button 
                 type="button"
-                @click="isThoughtExpanded = false; inputThought = ''; thoughtEditor?.commands.clearContent();"
-                class="text-[11px] text-slate-400 hover:text-slate-700 cursor-pointer"
+                @click="entryType = 0"
+                class="px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer"
+                :class="entryType === 0 ? 'bg-white text-emerald-900 shadow-2xs' : 'text-slate-500 hover:text-slate-900'"
               >
-                收起并清除 ✕
+                📖 摘录
+              </button>
+              <button 
+                type="button"
+                @click="entryType = 2"
+                class="px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1"
+                :class="entryType === 2 ? 'bg-indigo-600 text-white shadow-2xs' : 'text-slate-500 hover:text-slate-900'"
+              >
+                <span>💡 感悟</span>
+              </button>
+              <button 
+                type="button"
+                @click="entryType = 1"
+                class="px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1"
+                :class="entryType === 1 ? 'bg-amber-500 text-white shadow-2xs' : 'text-slate-500 hover:text-slate-900'"
+              >
+                <span>❓ 问题</span>
               </button>
             </div>
 
-            <div class="h-28 rounded-2xl bg-white border border-emerald-300/80 p-3 overflow-y-auto stable-scroll focus-within:ring-2 focus-within:ring-emerald-400/20 shadow-inner transition-all">
+            <div class="flex items-center gap-2">
+              <button 
+                @click="triggerSelectImage"
+                title="存入本地图片"
+                class="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-semibold flex items-center gap-1.5 transition active:scale-95 cursor-pointer shadow-xs"
+              >
+                <span>📷</span><span>存图</span>
+              </button>
+              <button 
+                @click="smartPasteButtonAction" 
+                title="粘贴截图或文本"
+                class="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-semibold flex items-center gap-1.5 transition active:scale-95 cursor-pointer shadow-xs"
+              >
+                <span>📋</span><span>粘贴</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- 紧凑微型彩虹排版工具栏 (Tiptap 现代所见即所得直调) -->
+          <div class="shrink-0 px-3.5 py-1.5 bg-slate-50/40 border-b border-slate-100 flex items-center gap-1 overflow-x-auto stable-scroll select-none">
+            <button type="button" @click="editor?.chain().focus().toggleHeading({ level: 1 }).run()" title="H1 标题" class="px-1.5 h-6 rounded-md hover:bg-slate-200/70 text-xs font-bold text-slate-700 cursor-pointer">H1</button>
+            <button type="button" @click="editor?.chain().focus().toggleHeading({ level: 2 }).run()" title="H2 标题" class="px-1.5 h-6 rounded-md hover:bg-slate-200/70 text-xs font-bold text-slate-700 cursor-pointer">H2</button>
+            <span class="w-[1px] h-3.5 bg-slate-200 mx-0.5"></span>
+
+            <button type="button" @click="editor?.chain().focus().toggleBold().run()" title="加粗" class="w-6 h-6 rounded-md hover:bg-slate-200/70 text-xs font-bold text-slate-700 flex items-center justify-center cursor-pointer">B</button>
+            <button type="button" @click="editor?.chain().focus().toggleItalic().run()" title="斜体" class="w-6 h-6 rounded-md hover:bg-slate-200/70 text-xs italic text-slate-700 flex items-center justify-center cursor-pointer">I</button>
+            <button type="button" @click="editor?.chain().focus().toggleUnderline().run()" title="下划线" class="w-6 h-6 rounded-md hover:bg-slate-200/70 text-xs underline text-slate-700 flex items-center justify-center cursor-pointer">U</button>
+            <button type="button" @click="editor?.chain().focus().toggleStrike().run()" title="删除线" class="w-6 h-6 rounded-md hover:bg-slate-200/70 text-xs line-through text-slate-700 flex items-center justify-center cursor-pointer">S</button>
+            <span class="w-[1px] h-3.5 bg-slate-200 mx-0.5"></span>
+
+            <!-- 彩虹高亮荧光笔 (直接涂抹变色，绝无符号) -->
+            <button type="button" @click="editor?.chain().focus().toggleHighlight({ color: '#FEF08A' }).run()" title="荧光黄" class="w-4 h-4 rounded-full bg-amber-300 hover:scale-110 cursor-pointer shadow-2xs mx-0.5"></button>
+            <button type="button" @click="editor?.chain().focus().toggleHighlight({ color: '#A7F3D0' }).run()" title="青草绿" class="w-4 h-4 rounded-full bg-emerald-400 hover:scale-110 cursor-pointer shadow-2xs mx-0.5"></button>
+            <button type="button" @click="editor?.chain().focus().toggleHighlight({ color: '#BAE6FD' }).run()" title="晴空蓝" class="w-4 h-4 rounded-full bg-sky-400 hover:scale-110 cursor-pointer shadow-2xs mx-0.5"></button>
+            <button type="button" @click="editor?.chain().focus().toggleHighlight({ color: '#FDA4AF' }).run()" title="樱花粉" class="w-4 h-4 rounded-full bg-rose-300 hover:scale-110 cursor-pointer shadow-2xs mx-0.5"></button>
+            <span class="w-[1px] h-3.5 bg-slate-200 mx-0.5"></span>
+
+            <!-- 真正的小方框清单 (绝无 - [ ] 字符) -->
+            <button type="button" @click="editor?.chain().focus().toggleTaskList().run()" title="打勾清单 (点击即成小方框)" class="px-2 h-6 rounded-md hover:bg-emerald-100/70 text-xs font-bold text-emerald-800 flex items-center gap-1 cursor-pointer">
+              <span>☑</span><span>清单</span>
+            </button>
+            <button type="button" @click="editor?.chain().focus().toggleBlockquote().run()" title="引用块" class="w-6 h-6 rounded-md hover:bg-slate-200/70 text-xs text-slate-700 flex items-center justify-center cursor-pointer">❞</button>
+          </div>
+
+          <!-- 原句正文书写区 (Tiptap 现代所见即所得画布) -->
+          <div class="flex-1 min-h-0 relative p-4 bg-white overflow-y-auto stable-scroll">
+            <editor-content 
+              :editor="editor" 
+              class="tiptap-container w-full h-full text-base sm:text-[17px] leading-[1.8] text-[#0F172A] font-serif"
+            />
+          </div>
+
+          <!-- 紧凑出处输入条 -->
+          <div class="shrink-0 px-4 py-2.5 bg-slate-50 border-t border-slate-100 flex items-center gap-3 text-xs">
+            <span class="text-slate-500 font-bold shrink-0">{{ entryType === 2 ? '契机场景:' : (entryType === 1 ? '背景线索:' : '文献出处:') }}</span>
+            <input 
+              type="text"
+              v-model="inputSource"
+              :placeholder="entryType === 2 ? '记录灵感契机（可选：深夜漫步 / 洗澡顿悟 / 谈话共鸣）' : (entryType === 1 ? '来源背景（如：认知科学 / 组织设计）' : '文献出处（如：《置身事内》P120）')" 
+              class="flex-1 bg-transparent focus:outline-none text-[#0F172A] placeholder-[#94A3B8]"
+            />
+            <div v-if="recentSources.length > 0 && !inputSource" class="hidden sm:flex items-center gap-1.5">
+              <span class="text-[10px] text-slate-400">快速填入:</span>
+              <button 
+                v-for="s in recentSources.slice(0, 3)" 
+                :key="s"
+                @click="inputSource = s"
+                class="text-[11px] px-2.5 py-0.5 rounded-md bg-white hover:bg-slate-200/80 text-slate-700 transition cursor-pointer border border-slate-200/60 truncate max-w-[120px]"
+              >
+                {{ s }}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 右栏：伴随年轮与分类 (40% 紧凑侧翼卡片) -->
+        <div class="w-full md:w-[380px] lg:w-[420px] shrink-0 flex flex-col justify-between h-full min-h-0 rounded-3xl bg-white border border-emerald-950/[0.08] shadow-sm p-4 gap-3.5 overflow-hidden">
+          
+          <!-- 上部：当下认知输入 -->
+          <div class="flex-1 min-h-0 flex flex-col gap-2">
+            <div class="shrink-0 flex items-center justify-between text-xs font-semibold text-slate-700">
+              <span class="tracking-wide uppercase text-[11px] text-emerald-800 font-bold flex items-center gap-1">
+                <span>{{ isEntryQuestion ? '💡 初步假设 / 解题线索' : '🌱 当下认知 (思维年轮)' }}</span>
+              </span>
+              <span class="text-[10px] text-slate-400">{{ inputThought.length > 0 ? `${inputThought.length} 字` : '(可选)' }}</span>
+            </div>
+
+            <!-- 认知微型工具栏 (右侧专属 Tiptap 所见即所得直调) -->
+            <div class="shrink-0 flex items-center justify-between gap-1 p-1 rounded-xl bg-slate-50 border border-slate-100 select-none">
+              <div class="flex items-center gap-1">
+                <button type="button" @click="thoughtEditor?.chain().focus().toggleBold().run()" title="加粗" class="w-5 h-5 rounded hover:bg-slate-200/70 text-xs font-bold text-slate-700 flex items-center justify-center cursor-pointer">B</button>
+                <button type="button" @click="thoughtEditor?.chain().focus().toggleUnderline().run()" title="下划线" class="w-5 h-5 rounded hover:bg-slate-200/70 text-xs underline text-slate-700 flex items-center justify-center cursor-pointer">U</button>
+                <button type="button" @click="thoughtEditor?.chain().focus().toggleStrike().run()" title="删除线" class="w-5 h-5 rounded hover:bg-slate-200/70 text-xs line-through text-slate-700 flex items-center justify-center cursor-pointer">S</button>
+                <span class="w-[1px] h-3 bg-slate-200 mx-0.5"></span>
+                <button type="button" @click="thoughtEditor?.chain().focus().toggleHighlight({ color: '#FEF08A' }).run()" title="荧光黄" class="w-3.5 h-3.5 rounded-full bg-amber-300 hover:scale-110 cursor-pointer shadow-2xs mx-0.5"></button>
+                <button type="button" @click="thoughtEditor?.chain().focus().toggleHighlight({ color: '#A7F3D0' }).run()" title="青草绿" class="w-3.5 h-3.5 rounded-full bg-emerald-400 hover:scale-110 cursor-pointer shadow-2xs mx-0.5"></button>
+                <button type="button" @click="thoughtEditor?.chain().focus().toggleHighlight({ color: '#FDA4AF' }).run()" title="樱花粉" class="w-3.5 h-3.5 rounded-full bg-rose-300 hover:scale-110 cursor-pointer shadow-2xs mx-0.5"></button>
+                <span class="w-[1px] h-3 bg-slate-200 mx-0.5"></span>
+                <button type="button" @click="thoughtEditor?.chain().focus().toggleTaskList().run()" title="打勾清单" class="px-1.5 h-5 rounded hover:bg-emerald-100 text-[11px] font-bold text-emerald-800 cursor-pointer">☑</button>
+              </div>
+              <button 
+                type="button"
+                @click="openQuoteRefPicker('thoughtEditor')" 
+                title="在思考中引用摘录" 
+                class="px-2.5 h-5 rounded-md bg-white hover:bg-slate-100 text-[10px] font-semibold text-emerald-800 border border-emerald-200 flex items-center gap-1 cursor-pointer shadow-2xs transition active:scale-95"
+              >
+                <span>🔗</span><span>引用摘录</span>
+              </button>
+            </div>
+
+            <!-- 认知输入框 (右侧 Tiptap 现代所见即所得画布) -->
+            <div class="flex-1 min-h-0 rounded-2xl bg-slate-50/70 border border-slate-200/80 p-3 overflow-y-auto stable-scroll focus-within:bg-white focus-within:border-emerald-500 focus-within:ring-2 focus-within:ring-emerald-400/20 transition-all">
               <editor-content 
                 :editor="thoughtEditor" 
                 class="tiptap-container w-full h-full text-xs sm:text-sm leading-relaxed text-[#0F172A] font-sans"
@@ -2005,58 +1773,50 @@ const handleImportFileInputChange = (e: Event) => {
             </div>
           </div>
 
-        </div>
+          <!-- 中部：分类标签栏 -->
+          <div class="shrink-0 flex flex-col gap-1.5 pt-2 border-t border-slate-100">
+            <div class="flex items-center justify-between text-xs">
+              <span class="text-[11px] font-bold text-slate-500 uppercase tracking-wider">🏷 分类归属</span>
+              <button @click="tagsEngine.openTagPickerModal(null)" class="text-xs font-bold text-emerald-700 hover:underline cursor-pointer">
+                标签库 ({{ tagsEngine.tagStats.value.length }})
+              </button>
+            </div>
 
-        <!-- 6. 底栏操作中枢：分类标签 + 立即收录大按钮 (闭环动线，一气呵成) -->
-        <div class="shrink-0 px-5 py-3 bg-white border-t border-slate-100 flex items-center justify-between gap-4">
-          
-          <!-- 标签选择与快速贴标签区 -->
-          <div class="flex-1 min-w-0 flex items-center gap-2">
-            <!-- 标签库弹窗按钮 -->
-            <button 
-              type="button"
-              @click="tagsEngine.openTagPickerModal(null)" 
-              class="h-8 px-3 rounded-xl border border-slate-200 hover:border-emerald-300 bg-slate-50 hover:bg-emerald-50 text-slate-700 hover:text-emerald-900 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer shrink-0 shadow-2xs"
-            >
-              <span>🏷️ 标签</span>
-              <span class="font-mono text-[10.5px] opacity-60">({{ tagsEngine.tagStats.value.length }})</span>
-            </button>
-
-            <!-- 已挂载标签胶囊流与即时输入框 -->
-            <div class="flex-1 min-h-[34px] px-2.5 py-0.5 rounded-xl border border-slate-200/80 bg-slate-50/70 flex flex-wrap items-center gap-1.5 focus-within:bg-white focus-within:border-emerald-500 transition-all">
+            <div class="min-h-[38px] px-3 py-1 rounded-2xl border border-slate-200/80 bg-slate-50/70 flex flex-wrap items-center gap-1.5 focus-within:border-emerald-500">
               <span 
                 v-for="(tag, idx) in tagsEngine.attachedTags.value" 
                 :key="tag"
-                class="text-xs px-2.5 py-0.5 rounded-full border flex items-center gap-1 shadow-2xs font-semibold"
+                class="text-xs px-2.5 py-0.5 rounded-full border flex items-center gap-1 shadow-2xs font-semibold animate-pop"
                 :style="{ backgroundColor: tagsEngine.getTagColor(tag).bg, borderColor: tagsEngine.getTagColor(tag).border, color: tagsEngine.getTagColor(tag).text }"
               >
                 <span class="w-1.5 h-1.5 rounded-full" :style="{ backgroundColor: tagsEngine.getTagColor(tag).dot }"></span>
                 <span>{{ tagsEngine.formatHierarchyTagName(tag) }}</span>
-                <button @click="tagsEngine.removeAttachedTag(idx)" class="opacity-50 hover:opacity-100 cursor-pointer ml-0.5">×</button>
+                <button @click="tagsEngine.removeAttachedTag(idx)" class="opacity-50 hover:opacity-100 cursor-pointer ml-0.5 leading-none">×</button>
               </span>
 
-              <div class="relative flex-1 min-w-[100px] flex items-center">
+              <div class="relative flex-1 min-w-[120px] flex items-center">
                 <input 
                   type="text"
                   v-model="tagsEngine.tagInputText.value"
                   @keydown="tagsEngine.handleTagInputKeydown" 
                   @blur="tagsEngine.pushTag(tagsEngine.tagInputText.value)"
-                  placeholder="贴标签..." 
-                  class="bg-transparent text-xs w-full focus:outline-none text-[#0F172A] placeholder-[#94A3B8]"
+                  placeholder="贴标签 (支持联想)..." 
+                  class="bg-transparent text-xs w-full focus:outline-none px-1 text-[#0F172A] placeholder-[#94A3B8]"
                 />
 
-                <!-- 联想提示框 -->
+                <!-- 浮动联想推荐卡片 -->
                 <div 
                   v-if="tagsEngine.tagSuggestions.value.length > 0"
-                  class="absolute left-0 bottom-full mb-2 w-56 p-1.5 rounded-2xl bg-white border border-emerald-950/[0.12] shadow-xl z-50 flex flex-col gap-0.5"
+                  class="absolute left-0 top-full mt-1.5 w-60 p-1.5 rounded-2xl bg-white border border-emerald-950/[0.12] shadow-xl z-50 flex flex-col gap-0.5 animate-pop"
                   @mousedown.prevent
                 >
+                  <div class="px-2 py-0.5 text-[10px] font-bold text-slate-400 font-mono">已有匹配标签 (点击直接选用):</div>
                   <button
                     v-for="s in tagsEngine.tagSuggestions.value"
                     :key="s.id"
                     type="button"
                     @click="tagsEngine.pushTag(s.name)"
-                    class="w-full text-left px-2 py-1 rounded-xl text-xs hover:bg-emerald-50 text-slate-700 hover:text-emerald-900 flex items-center justify-between transition cursor-pointer"
+                    class="w-full text-left px-2.5 py-1.5 rounded-xl text-xs hover:bg-emerald-50 text-slate-700 hover:text-emerald-900 flex items-center justify-between transition cursor-pointer"
                   >
                     <span class="truncate font-semibold font-mono">#{{ tagsEngine.formatHierarchyTagName(s.name) }}</span>
                     <span class="text-[10px] opacity-60 font-mono">({{ s.count }})</span>
@@ -2065,33 +1825,34 @@ const handleImportFileInputChange = (e: Event) => {
               </div>
             </div>
 
-            <!-- 常用标签前 3 个快捷点选 -->
-            <div v-if="tagsEngine.frequentTags.value.length > 0" class="hidden lg:flex items-center gap-1 shrink-0">
+            <!-- 常用标签 -->
+            <div v-if="tagsEngine.frequentTags.value.length > 0" class="flex items-center gap-1 flex-wrap pt-0.5">
+              <span class="text-[10px] text-slate-400 shrink-0">常用:</span>
               <button 
-                v-for="ft in tagsEngine.frequentTags.value.slice(0, 3)"
+                v-for="ft in tagsEngine.frequentTags.value.slice(0, 5)"
                 :key="ft"
                 @click="tagsEngine.toggleAttachTag(ft)"
-                class="text-[10.5px] px-2 py-1 rounded-lg border transition cursor-pointer font-medium max-w-[90px] truncate"
+                class="text-[10px] px-2.5 py-0.5 rounded-full border transition cursor-pointer font-medium max-w-[100px] truncate"
                 :style="tagsEngine.attachedTags.value.includes(ft)
                   ? { backgroundColor: tagsEngine.getTagColor(ft).bg, borderColor: tagsEngine.getTagColor(ft).border, color: tagsEngine.getTagColor(ft).text }
-                  : { backgroundColor: '#F8FAFC', borderColor: 'rgba(15,23,42,0.08)', color: '#64748B' }"
+                  : { backgroundColor: '#F1F5F9', borderColor: 'rgba(15,23,42,0.08)', color: '#475569' }"
               >
                 {{ tagsEngine.attachedTags.value.includes(ft) ? '✓' : '+' }} {{ tagsEngine.formatHierarchyTagName(ft) }}
               </button>
             </div>
           </div>
 
-          <!-- 保存提交大按钮 (与左侧编辑完全连贯) -->
-          <button 
-            type="button"
-            @click="handleCreateQuote"
-            :disabled="isSubmitting || isContentEmpty(inputQuote)"
-            class="h-9 px-6 rounded-xl text-xs sm:text-sm font-bold transition-all shadow-md text-white disabled:opacity-40 cursor-pointer active:scale-95 flex items-center justify-center gap-2 shrink-0"
-            :class="entryType === 2 ? 'bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 shadow-indigo-500/25' : (entryType === 1 ? 'bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 shadow-orange-500/25' : 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 shadow-emerald-500/25')" 
-          >
-            <span>{{ isSubmitting ? '存入中...' : (entryType === 2 ? '立项原生感悟 ↵' : (entryType === 1 ? '立项待解之问 ↵' : '珍藏入年轮 ↵')) }}</span>
-          </button>
-
+          <!-- 下部：保存大按钮 -->
+          <div class="shrink-0 pt-2 border-t border-slate-100">
+            <button 
+              @click="handleCreateQuote"
+              :disabled="isSubmitting || isContentEmpty(inputQuote)"
+              class="w-full h-11 rounded-2xl text-xs sm:text-sm font-bold transition-all shadow-md text-white disabled:opacity-40 cursor-pointer active:scale-95 flex items-center justify-center gap-2"
+              :class="entryType === 2 ? 'bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 shadow-indigo-500/25' : (entryType === 1 ? 'bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 shadow-orange-500/25' : 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 shadow-emerald-500/25')" 
+            >
+              <span>{{ isSubmitting ? '正在存入...' : (entryType === 2 ? '铸立原生感悟 ↵' : (entryType === 1 ? '立项待解之问 ↵' : '珍藏入年轮 ↵')) }}</span>
+            </button>
+          </div>
         </div>
 
       </div>
@@ -2192,7 +1953,28 @@ const handleImportFileInputChange = (e: Event) => {
                 </div>
               </div>
 
-
+              <!-- 2.5 顶级领域聚合胶囊栏 (一键收敛视口) -->
+              <div v-if="tagsEngine.rootTagDomains.value.length > 0" class="shrink-0 flex items-center gap-1.5 overflow-x-auto stable-scroll pb-2 mb-1.5 select-none">
+                <button
+                  type="button"
+                  @click="tagsEngine.selectedRootDomain.value = null"
+                  class="text-[11px] px-2.5 py-1 rounded-full border transition cursor-pointer font-bold whitespace-nowrap shrink-0"
+                  :class="tagsEngine.selectedRootDomain.value === null ? 'bg-slate-900 text-white border-slate-900 shadow-2xs' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'"
+                >
+                  全部大类
+                </button>
+                <button
+                  v-for="d in tagsEngine.rootTagDomains.value"
+                  :key="d.name"
+                  type="button"
+                  @click="tagsEngine.toggleRootDomain(d.name)"
+                  class="text-[11px] px-2.5 py-1 rounded-full border transition cursor-pointer font-semibold whitespace-nowrap shrink-0 flex items-center gap-1"
+                  :class="tagsEngine.selectedRootDomain.value === d.name ? 'bg-emerald-600 text-white border-emerald-600 font-bold shadow-2xs' : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-emerald-50 hover:border-emerald-200'"
+                >
+                  <span>{{ d.name }}</span>
+                  <span class="text-[9.5px] font-mono opacity-70">({{ d.count }})</span>
+                </button>
+              </div>
 
               <!-- 3. 全局重置项 -->
               <div 
@@ -2202,7 +1984,7 @@ const handleImportFileInputChange = (e: Event) => {
               >
                 <div class="flex items-center gap-2">
                   <span>📂</span>
-                  <span>全部条目</span>
+                  <span>{{ tagsEngine.selectedRootDomain.value ? `大类：${tagsEngine.selectedRootDomain.value}` : '全部条目' }}</span>
                 </div>
                 <span class="font-mono text-[11px] opacity-75">{{ quotes.length }}</span>
               </div>
@@ -2464,13 +2246,7 @@ const handleImportFileInputChange = (e: Event) => {
         </div>
 
         <div 
-          :ref="(el) => { 
-            archiveContainerRef = el as HTMLElement; 
-            if (el) {
-              virtualScrollEngine.scrollContainerRef.value = el as HTMLElement;
-              virtualScrollEngine.syncViewport();
-            }
-          }"
+          ref="archiveContainerRef"
           @scroll="handleArchiveScroll"
           class="flex-1 min-h-0 stable-scroll flex flex-col pr-1 pb-24 overflow-y-auto"
           @click="handleRichContainerClick"
@@ -2544,7 +2320,7 @@ const handleImportFileInputChange = (e: Event) => {
 
               <!-- 悬浮操作胶囊 -->
               <div 
-                v-if="(activeActionCardId === card.id || editingQuoteId === card.id) && editingThoughtId !== card.id && !editingThoughtId && activeAppendQuoteId !== card.id"
+                v-if="activeActionCardId === card.id || editingQuoteId === card.id"
                 class="absolute right-5 top-5 z-20 flex items-center gap-1.5 p-1 rounded-full bg-white/95 border border-emerald-950/[0.1] shadow-xl select-none animate-fade-in"
                 @click.stop
               >
@@ -2567,7 +2343,7 @@ const handleImportFileInputChange = (e: Event) => {
 
               <!-- 原句展示 -->
               <!-- 编辑原句 (含全套排版工具栏与出处) -->
-              <div v-if="editingQuoteId === card.id" @click.stop class="flex flex-col gap-2.5 pt-1 animate-fade-in">
+              <div v-if="editingQuoteId === card.id" class="flex flex-col gap-2.5 pt-1 animate-fade-in">
                 <div class="flex items-center justify-between gap-2">
                   <div class="flex items-center p-0.5 rounded-xl bg-slate-100 border border-slate-200">
                     <button 
@@ -2600,11 +2376,9 @@ const handleImportFileInputChange = (e: Event) => {
 
                 
 
-                <div class="w-full">
+                <div class="h-44 w-full">
                   <TiptapEditor @quote-ref="openQuoteRefPicker" 
                     v-model="editingQuoteContent"
-                    :show-zen-trigger="true"
-                    @open-zen="openZenEditForQuote(card)"
                     :show-headings="true"
                     min-height="110px"
                     placeholder="修改原句内容..."
@@ -2829,12 +2603,10 @@ const handleImportFileInputChange = (e: Event) => {
                       </div>
 
                       <!-- 编辑既有思考 -->
-                      <div v-if="editingThoughtId === t.id" @click.stop class="mt-1 flex flex-col rounded-2xl p-1 gap-2 animate-fade-in">
-                        <div class="w-full">
+                      <div v-if="editingThoughtId === t.id" class="mt-1 flex flex-col rounded-2xl p-1 gap-2 animate-fade-in">
+                        <div class="h-36 w-full">
                           <TiptapEditor @quote-ref="openQuoteRefPicker" 
                             v-model="editingThoughtText"
-                        :show-zen-trigger="true"
-                        @open-zen="openZenEditForThought(t)"
                             min-height="80px"
                             placeholder="修改认知演进..."
                             content-class="font-sans text-xs sm:text-sm leading-relaxed"
@@ -2873,7 +2645,7 @@ const handleImportFileInputChange = (e: Event) => {
                     class="flex flex-col rounded-2xl bg-slate-50/90 p-3 gap-2.5 border border-emerald-200 shadow-sm animate-fade-in"
                     @click.stop
                   >
-                    <div class="w-full">
+                    <div class="h-36 w-full">
                       <TiptapEditor 
                         @quote-ref="openQuoteRefPicker" 
                         v-model="appendThoughtContent"
@@ -2939,9 +2711,6 @@ const handleImportFileInputChange = (e: Event) => {
           <span class="text-xs px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 font-bold">
             当前置顶 {{ pinnedQuotesList.length }} 篇核心手记
           </span>
-          <span class="text-[11px] font-mono text-slate-400 hidden sm:inline">
-            (可上下按住 ⠿ 拖拽卡片自由排序)
-          </span>
         </div>
       </div>
 
@@ -2952,29 +2721,12 @@ const handleImportFileInputChange = (e: Event) => {
           <p class="text-xs text-slate-500 mb-4">在年轮卡片上点击「🌟 置顶」即可收录在此常驻回顾。</p>
         </div>
         <article 
-          v-for="(card, pIdx) in pinnedQuotesList" 
+          v-for="card in pinnedQuotesList" 
           :key="'pinned_' + card.id"
-          draggable="true"
-          @dragstart="handlePinnedDragStart($event, pIdx)"
-          @dragover="handlePinnedDragOver($event, pIdx)"
-          @dragleave="handlePinnedDragLeave($event, pIdx)"
-          @drop="handlePinnedDrop($event, pIdx)"
-          @dragend="handlePinnedDragEnd"
           @click="handleCardClick(card.id)"
           @mouseleave="handleCardMouseLeave(card.id)"
-          class="relative soft-card p-5 sm:p-6 flex flex-col gap-3 transition-all duration-150 min-w-0 border-amber-200/60 select-text"
-          :class="[
-            draggingPinnedIndex === pIdx ? 'opacity-30 scale-[0.98] border-dashed border-amber-500 bg-amber-50/20' : '',
-            dragOverPinnedIndex === pIdx && draggingPinnedIndex !== pIdx ? 'ring-2 ring-amber-500/80 shadow-lg -translate-y-1' : ''
-          ]"
+          class="relative soft-card p-5 sm:p-6 flex flex-col gap-3 transition-all duration-150 min-w-0 border-amber-200/60"
         >
-          <!-- 优雅拖拽把手 (常驻左上角微型指示，悬停时翡翠/琥珀微光) -->
-          <div 
-            class="absolute left-3.5 top-3.5 z-10 flex items-center justify-center w-6 h-6 rounded-lg text-slate-300 hover:text-amber-700 hover:bg-amber-100/70 transition-all cursor-grab active:cursor-grabbing select-none"
-            title="按住上下拖拽调整常看顺序"
-          >
-            <span class="text-xs font-mono leading-none tracking-tighter">⠿</span>
-          </div>
           <!-- 右上角快捷常看角标 (可直接点击取消置顶) -->
           <button 
             v-if="activeActionCardId !== card.id"
@@ -3034,15 +2786,6 @@ const handleImportFileInputChange = (e: Event) => {
       </div>
     </div>
 
-        <!-- 4.3 认知脉动与激增看板 (纯净独占) -->
-    <TagTrendsView 
-      v-else-if="currentTab === 'trends'"
-      :quotes="quotes"
-      :get-tag-dot-color="(name) => tagsEngine.getTagColor(name).dot"
-      @jump-to-quote="(id) => { currentTab = 'archive'; quoteLinksEngine.jumpToQuote(id); }"
-      @filter-tag-in-archive="(name) => { tagsEngine.selectedTag.value = name; currentTab = 'archive'; loadData(); }"
-    />
-
     <!-- 5. 沉浸式深度心流书房 (🎯 专注模式 · 含悬浮幽灵勘误) -->
     <Teleport to="body">
       <div 
@@ -3092,7 +2835,11 @@ const handleImportFileInputChange = (e: Event) => {
                 </span>
                 
                 <div class="flex items-center gap-3">
-                  <!-- 雅致常驻勘误按钮：低调显眼，悬停翡翠微光响应 -->
+                  <span v-if="focusQuote.source && !isFocusEditingQuote" class="text-xs italic text-slate-500 font-serif">
+                    来源：{{ focusQuote.source }}
+                  </span>
+                  
+                                    <!-- 雅致常驻勘误按钮：低调显眼，悬停翡翠微光响应 -->
                   <button 
                     v-if="!isFocusEditingQuote" 
                     type="button"
@@ -3108,7 +2855,7 @@ const handleImportFileInputChange = (e: Event) => {
 
               <!-- 原句勘误编辑态 -->
               <div v-if="isFocusEditingQuote" class="flex flex-col gap-3 py-1 animate-fade-in">
-                <div class="w-full">
+                <div class="h-44 w-full">
                   <TiptapEditor @quote-ref="openQuoteRefPicker" 
                     v-model="focusEditingQuoteContent"
                     :show-headings="true"
@@ -3140,9 +2887,9 @@ const handleImportFileInputChange = (e: Event) => {
                   v-html="richTextEngine.renderRichText(focusQuote.content, quoteLinksEngine.quoteLookupMap.value, quotes, quoteLinksEngine.fetchAllQuotesSilently)"
                 ></div>
 
-                <div v-if="focusQuote.source" class="mt-2 text-sm italic text-slate-500 font-serif border-t border-slate-100/80 pt-4 flex items-center justify-between gap-4">
-                  <span class="truncate min-w-0">—— {{ focusQuote.source }}</span>
-                  <span class="text-[11px] font-mono text-slate-400 font-sans not-italic shrink-0 whitespace-nowrap">时光沉淀 {{ Math.max(0, Math.floor((Date.now() - focusQuote.created_at) / 86400000)) }} 天</span>
+                <div v-if="focusQuote.source" class="mt-2 text-sm italic text-slate-500 font-serif border-t border-slate-100/80 pt-4 flex items-center justify-between">
+                  <span>—— {{ focusQuote.source }}</span>
+                  <span class="text-[11px] font-mono text-slate-400 font-sans not-italic">已在时光中沉淀 {{ getRingTimeSpan(focusQuote.created_at, Date.now()) }}</span>
                 </div>
               </template>
             </article>
@@ -3228,7 +2975,7 @@ const handleImportFileInputChange = (e: Event) => {
 
                   <!-- 思考年轮勘误态 -->
                   <div v-if="focusEditingThoughtId === t.id" class="flex flex-col gap-2 pt-1 animate-fade-in">
-                    <div class="w-full">
+                    <div class="h-36 w-full">
                       <TiptapEditor @quote-ref="openQuoteRefPicker" 
                         v-model="focusEditingThoughtText"
                         min-height="80px"
@@ -3263,7 +3010,7 @@ const handleImportFileInputChange = (e: Event) => {
                 
               </div>
 
-              <div class="w-full">
+              <div class="h-40 w-full">
                 <TiptapEditor @quote-ref="openQuoteRefPicker" 
                   v-model="focusThoughtInput"
                   min-height="100px"
@@ -3287,78 +3034,6 @@ const handleImportFileInputChange = (e: Event) => {
 
           </div>
         </main>
-      </div>
-    </Teleport>
-
-    <!-- 5.5 全局全屏心流沉浸编辑台 (True Zen Mode Modal) -->
-    <Teleport to="body">
-      <div 
-        v-if="zenEditState.isOpen"
-        class="fixed inset-0 z-[200] flex items-center justify-center p-4 sm:p-8 bg-slate-950/70 backdrop-blur-xs animate-fade-in select-none"
-        @click.self="cancelZenEdit"
-        @keydown.ctrl.enter="saveZenEdit"
-        @keydown.meta.enter="saveZenEdit"
-      >
-        <div class="w-full max-w-4xl h-[82vh] bg-white rounded-[28px] border border-emerald-950/[0.08] shadow-2xl flex flex-col overflow-hidden animate-pop select-text">
-          
-          <!-- 弹窗顶栏 -->
-          <div class="shrink-0 px-6 py-3.5 border-b border-slate-100 flex items-center justify-between select-none">
-            <div class="flex items-center gap-2.5">
-              <div class="w-8 h-8 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 flex items-center justify-center text-sm shadow-2xs font-bold">
-                ✏️
-              </div>
-              <div>
-                <h2 class="text-sm font-extrabold text-[#0F172A] tracking-tight">{{ zenEditState.title }}</h2>
-                <p class="text-[10.5px] text-slate-400 font-mono">沉浸模式 · 全宽视野深度推敲</p>
-              </div>
-            </div>
-
-            <button 
-              type="button"
-              @click="cancelZenEdit"
-              class="w-7 h-7 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-800 flex items-center justify-center text-xs transition cursor-pointer"
-            >
-              ✕
-            </button>
-          </div>
-
-          <!-- 全尺寸所见即所得编辑器 -->
-          <div class="flex-1 min-h-0 p-5 overflow-hidden flex flex-col">
-            <TiptapEditor
-              ref="zenEditorRef"
-              :key="`zen_${zenEditState.type}_${zenEditState.id}`"
-              v-model="zenEditState.content"
-              :show-headings="true"
-              :hide-quote-ref="false"
-              min-height="100%"
-              max-height="100%"
-              content-class="font-serif text-base sm:text-[17px] leading-[2.0]"
-              @quote-ref="openQuoteRefPicker"
-            />
-          </div>
-
-          <!-- 弹窗底栏操作：取消与保存 -->
-          <div class="shrink-0 px-6 py-3 border-t border-slate-100 bg-slate-50/80 flex items-center justify-between select-none">
-            <span class="text-[11px] font-mono text-slate-400">支持加粗、荧光高亮、清单与图片粘贴</span>
-            <div class="flex items-center gap-2.5">
-              <button 
-                type="button" 
-                @click="cancelZenEdit"
-                class="px-4 py-1.5 rounded-xl text-xs font-semibold text-slate-500 hover:text-slate-800 cursor-pointer"
-              >
-                取消
-              </button>
-              <button 
-                type="button" 
-                @click="saveZenEdit"
-                class="px-6 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-md active:scale-95 cursor-pointer transition"
-              >
-                ✓ 保存修改
-              </button>
-            </div>
-          </div>
-
-        </div>
       </div>
     </Teleport>
 
@@ -4092,7 +3767,7 @@ const handleImportFileInputChange = (e: Event) => {
               <span>写下跨越时空的当下新认知：</span>
             </span>
 
-            <div class="w-full">
+            <div class="h-36 w-full">
               <TiptapEditor @quote-ref="openQuoteRefPicker" 
                 v-model="resurfaceThoughtInput"
                 min-height="80px"
@@ -4138,12 +3813,12 @@ const handleImportFileInputChange = (e: Event) => {
       <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
       <span>{{ toastMessage }}</span>
       <button 
-        v-if="hasUndoHistory"
+        v-if="pendingUndo"
         type="button"
-        @click="executeUndo();"
+        @click="executeUndo(); toastMessage = null;"
         class="ml-1 px-2.5 py-0.5 rounded-full bg-emerald-500 hover:bg-emerald-400 text-white text-[11px] font-bold cursor-pointer active:scale-95 transition"
       >
-        撤销 ({{ undoStack.length }})
+        撤销
       </button>
     </div>
   </div>

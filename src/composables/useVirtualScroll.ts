@@ -1,4 +1,4 @@
-import { ref, computed, onUnmounted, type Ref } from "vue";
+import { ref, computed, watch, onUnmounted, type Ref } from "vue";
 
 export interface VirtualScrollOptions<T> {
   items: Ref<T[]>;
@@ -13,9 +13,9 @@ export function useVirtualScroll<T>(options: VirtualScrollOptions<T>) {
   const {
     items,
     estimatedItemHeight = 260,
-    itemGap = 24, // 严格对应 Tailwind gap-6 = 24px
-    bufferCount = 4,
-    virtualThreshold = 30, // 小于等于 30 条时直接直出渲染，杜绝任何闪白
+    itemGap = 24, // 对应 Tailwind gap-6 = 24px
+    bufferCount = 5,
+    virtualThreshold = 25,
     keyGetter,
   } = options;
 
@@ -23,17 +23,17 @@ export function useVirtualScroll<T>(options: VirtualScrollOptions<T>) {
   const scrollTop = ref(0);
   const viewportHeight = ref(800);
 
-  // 内部实测高度字典与已挂载节点反查表（精确回收 ResizeObserver 避免内存泄露）
+  // 内部实测高度字典与已挂载节点反查表
   const measuredHeights = new Map<string, number>();
   const observedElements = new Map<string, HTMLElement>();
   const heightVersion = ref(0);
-  let resizeObserver: ResizeObserver | null = null;
+  let itemResizeObserver: ResizeObserver | null = null;
+  let containerResizeObserver: ResizeObserver | null = null;
 
-  // 必须同步创建（不能放进 onMounted）：子元素的 ref 回调先于父组件的 onMounted 执行，
-  // 放进 onMounted 会导致首屏可见卡片在注册时 observer 还是 null，从未被真正 observe。
+  // 1. 同步创建元素尺寸观测器
   if (typeof window !== "undefined" && "ResizeObserver" in window) {
     let pendingUpdates = false;
-    resizeObserver = new ResizeObserver((entries) => {
+    itemResizeObserver = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const target = entry.target as HTMLElement;
         const key = target.getAttribute("data-virtual-key");
@@ -50,7 +50,41 @@ export function useVirtualScroll<T>(options: VirtualScrollOptions<T>) {
         heightVersion.value++;
       }
     });
+
+    // 2. 核心突破：容器级 ResizeObserver，窗口缩放/侧栏伸缩时 0ms 自动对齐可视高度！
+    containerResizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const cr = entry.contentRect;
+        if (cr.height > 0 && cr.height !== viewportHeight.value) {
+          viewportHeight.value = cr.height;
+        }
+      }
+    });
   }
+
+  // 3. 【核心根治】监听容器变化，一旦挂载立即直读真实尺寸并开启动态观测！
+  // 关键修复：当列表数据（如撤销恢复）发生改变时，强制更新 heightVersion 触发切片重绘
+  watch(
+    () => items.value.length,
+    () => {
+      heightVersion.value++;
+    }
+  );
+
+  watch(scrollContainerRef, (newEl, oldEl) => {
+    if (oldEl && containerResizeObserver) {
+      containerResizeObserver.unobserve(oldEl);
+    }
+    if (newEl) {
+      if (newEl.clientHeight > 0) {
+        viewportHeight.value = newEl.clientHeight;
+      }
+      scrollTop.value = newEl.scrollTop;
+      if (containerResizeObserver) {
+        containerResizeObserver.observe(newEl);
+      }
+    }
+  });
 
   const isVirtualized = computed(() => {
     return items.value.length > virtualThreshold;
@@ -60,9 +94,8 @@ export function useVirtualScroll<T>(options: VirtualScrollOptions<T>) {
     return measuredHeights.get(key) || estimatedItemHeight;
   };
 
-  // 核心前缀和表：严格计入真实元素高与 Tailwind gap-6 边距
+  // 核心前缀和表
   const offsetPositions = computed(() => {
-    // 显式依赖版本号，尺寸实测变化时才重算
     // eslint-disable-next-line @typescript-eslint/no-unused-expressions
     heightVersion.value;
 
@@ -102,7 +135,7 @@ export function useVirtualScroll<T>(options: VirtualScrollOptions<T>) {
     return ans;
   };
 
-  // 核心计算属性：视口可见切片窗口
+  // 核心计算属性：视口可见切片窗口 (防空白自愈机制)
   const virtualState = computed(() => {
     const list = items.value;
     const len = list.length;
@@ -119,7 +152,7 @@ export function useVirtualScroll<T>(options: VirtualScrollOptions<T>) {
       };
     }
 
-    // 条目较少时，直接直出全量数据，零计算开销
+    // 条目较少时，直接直出全量数据，零白屏风险
     if (!isVirtualized.value) {
       return {
         isVirtualized: false,
@@ -133,13 +166,15 @@ export function useVirtualScroll<T>(options: VirtualScrollOptions<T>) {
     }
 
     const { positions, totalHeight } = offsetPositions.value;
+    
+    // 【响应式修复】直接读取响应式 ref 的 scrollTop.value，确保滚动事件触发切片重算
     const currentTop = Math.max(0, scrollTop.value);
-    const rawStart = findStartIndex(currentTop);
 
+    const rawStart = findStartIndex(currentTop);
     const startIndex = Math.max(0, rawStart - bufferCount);
 
     let rawEnd = startIndex;
-    const targetBottom = currentTop + viewportHeight.value;
+    const targetBottom = currentTop + Math.max(viewportHeight.value, 600);
     while (rawEnd < len && positions[rawEnd] < targetBottom) {
       rawEnd++;
     }
@@ -161,7 +196,6 @@ export function useVirtualScroll<T>(options: VirtualScrollOptions<T>) {
     };
   });
 
-  // 关键修复：从原生的 Event Target 靶向直读 scrollTop，绝不依赖脆弱的模板 Ref
   const onScroll = (e?: Event) => {
     const el = (e?.target as HTMLElement) || scrollContainerRef.value;
     if (el) {
@@ -173,24 +207,23 @@ export function useVirtualScroll<T>(options: VirtualScrollOptions<T>) {
   };
 
   const registerItemElement = (key: string, el: HTMLElement | null) => {
-    // 节点随虚拟滚动移出视口并销毁时，立即注销监听，杜绝内存泄漏
     if (!el) {
       const prevEl = observedElements.get(key);
-      if (prevEl && resizeObserver) {
-        resizeObserver.unobserve(prevEl);
+      if (prevEl && itemResizeObserver) {
+        itemResizeObserver.unobserve(prevEl);
         observedElements.delete(key);
       }
       return;
     }
 
     const prevEl = observedElements.get(key);
-    if (prevEl && prevEl !== el && resizeObserver) {
-      resizeObserver.unobserve(prevEl);
+    if (prevEl && prevEl !== el && itemResizeObserver) {
+      itemResizeObserver.unobserve(prevEl);
     }
     observedElements.set(key, el);
 
-    if (resizeObserver) {
-      resizeObserver.observe(el);
+    if (itemResizeObserver) {
+      itemResizeObserver.observe(el);
     }
     const h = el.offsetHeight;
     if (h > 0 && measuredHeights.get(key) !== h) {
@@ -214,10 +247,23 @@ export function useVirtualScroll<T>(options: VirtualScrollOptions<T>) {
     }
   };
 
+  // 显式同步视口高度与位置
+  const syncViewport = () => {
+    const el = scrollContainerRef.value;
+    if (el) {
+      if (el.clientHeight > 0) viewportHeight.value = el.clientHeight;
+      scrollTop.value = el.scrollTop;
+    }
+  };
+
   onUnmounted(() => {
-    if (resizeObserver) {
-      resizeObserver.disconnect();
-      resizeObserver = null;
+    if (itemResizeObserver) {
+      itemResizeObserver.disconnect();
+      itemResizeObserver = null;
+    }
+    if (containerResizeObserver) {
+      containerResizeObserver.disconnect();
+      containerResizeObserver = null;
     }
     observedElements.clear();
   });
@@ -229,5 +275,6 @@ export function useVirtualScroll<T>(options: VirtualScrollOptions<T>) {
     onScroll,
     registerItemElement,
     scrollToKey,
+    syncViewport,
   };
 }

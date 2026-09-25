@@ -14,67 +14,49 @@ export function useQuoteLinks(
   normalizeTagName: (tag: string) => string,
   onScrollToVirtualItem?: (id: string) => void,
   onSwitchToArchiveTab?: () => void,
-  selectedEntryTypeFilter?: Ref<string>
+  selectedEntryTypeFilter?: Ref<string>,
+  quoteLookupRef?: Ref<Record<string, QuoteDetail>>
 ) {
-  const quoteLookupMap = ref<Record<string, QuoteDetail>>({});
+  // 单一真理源接入：若传入全局 quoteLookupRef 则直接消费，否则从 quotes 计算
+  const fallbackLookup = computed<Record<string, QuoteDetail>>(() => {
+    const dict: Record<string, QuoteDetail> = {};
+    for (const item of quotes.value) dict[item.id] = item;
+    return dict;
+  });
+  const quoteLookupMap = quoteLookupRef || fallbackLookup;
+
   const navStack = ref<NavHistoryItem[]>([]);
   const highlightedQuoteId = ref<string | null>(null);
   const viewingQuoteRef = ref<QuoteDetail | null>(null);
-  let isSilentFetching = false;
 
   const activeNavBack = computed(() => {
     return navStack.value.length > 0 ? navStack.value[navStack.value.length - 1] : null;
   });
 
-  const updateQuoteLookup = (items: QuoteDetail[]) => {
-    const next = { ...quoteLookupMap.value };
-    for (const item of items) {
-      next[item.id] = { ...item, tags: item.tags || [] };
-    }
-    quoteLookupMap.value = next;
-  };
+  // 兼容老调用，无需重复查询 SQLite，直接复用单一真理源
+  const fetchAllQuotesSilently = async () => {};
 
-  const setQuoteLookup = (items: QuoteDetail[]) => {
-    const freshMap: Record<string, QuoteDetail> = {};
-    for (const item of items) {
-      freshMap[item.id] = { ...item, tags: item.tags || [] };
-    }
-    quoteLookupMap.value = freshMap;
-  };
-
-  const removeQuoteFromLookup = (quoteId: string) => {
-    const next = { ...quoteLookupMap.value };
-    delete next[quoteId];
-    quoteLookupMap.value = next;
-  };
-
-  const fetchAllQuotesSilently = async () => {
-    if (isSilentFetching) return;
-    isSilentFetching = true;
-    try {
-      const res = await invoke<any>("get_quotes", {
-        onlyQuestions: false,
-        tag: null,
-        search: null,
-        all: true,
-      });
-      const all: QuoteDetail[] = Array.isArray(res) ? res : (res.items || []);
-      setQuoteLookup(all);
-    } catch (e) {
-      console.error("加载全局引用失败:", e);
-    } finally {
-      isSilentFetching = false;
-    }
-  };
-
-  // 核心跳转管线：融合虚拟滚动、Tab 切换与视图过滤清除
+  // 核心跳转管线：融合虚拟滚动、Tab 切换与视图过滤清除 (工业级穿透自愈保障)
   const jumpToQuote = async (targetId: string, sourceCardId?: string) => {
-    if (!quoteLookupMap.value[targetId]) {
-      await fetchAllQuotesSilently();
-    }
-    const targetQuote = quoteLookupMap.value[targetId] || quotes.value.find((q) => q.id === targetId);
+    let targetQuote = quoteLookupMap.value[targetId] || quotes.value.find((q) => q.id === targetId);
+
+    // 【穿透兜底核心】：如果当前内存或分页中未命中，立刻穿透直查 SQLite 权威单体！
     if (!targetQuote) {
-      showToast("未找到该摘录条目（可能已被删除）");
+      try {
+        const fetched = await invoke<QuoteDetail>("get_quote_by_id", { quoteId: targetId });
+        if (fetched) {
+          targetQuote = fetched;
+          // 瞬间注入字典与内存视图，绝不发生“未命中就不显示”的假空白！
+          quoteLookupMap.value[targetId] = fetched;
+          quotes.value.unshift(fetched);
+        }
+      } catch (e) {
+        console.error("穿透检索单体手记失败:", e);
+      }
+    }
+
+    if (!targetQuote) {
+      showToast("未找到该摘录条目（该手记已被物理删除）");
       return;
     }
 
@@ -288,9 +270,6 @@ export function useQuoteLinks(
     highlightedQuoteId,
     viewingQuoteRef,
     activeNavBack,
-    updateQuoteLookup,
-    setQuoteLookup,
-    removeQuoteFromLookup,
     fetchAllQuotesSilently,
     jumpToQuote,
     jumpBackToSource,

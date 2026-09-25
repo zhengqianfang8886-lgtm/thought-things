@@ -540,47 +540,53 @@ ul[data-type="taskList"] li[data-type="taskItem"][data-checked="true"] > div {
     0 0 0 1.5px rgba(217, 119, 6, 0.6),
     0 2px 6px -1px rgba(217, 119, 6, 0.35) !important;
 }
-
 /* ==========================================================================
-   TipTap 编辑器与展示端：四色彩虹荧光笔体系 (黄/绿/蓝/粉)
-   - 移除粗暴的 !important 覆盖，完整放行各色彩虹高亮
-   - 为各色精准注入高对比度字墨，绝无发灰发虚
+   ThoughtRings 极致高对比度荧光笔体系 (彻底解决文字发虚与细笔画被吞噬问题)
    ========================================================================== */
 
-.rich-rendered mark:not(.search-highlight),
-.tiptap mark:not(.search-highlight),
-.tiptap-container mark:not(.search-highlight) {
-  padding: 1px 4px !important;
-  margin: 0 1px;
-  border-radius: 4px;
-  font-weight: 550;
-  box-decoration-break: clone;
-  -webkit-box-decoration-break: clone;
+/* 全局 mark 标签：字墨强制深黑、字重加粗半档、笔画清晰骨架挺拔 */
+.rich-rendered mark,
+.tiptap mark,
+.tiptap-container mark {
+  font-weight: 650 !important; /* 彻底加固宋体/衬线体极细横笔画 */
+  padding: 1px 5px !important;
+  margin: 0 1px !important;
+  border-radius: 4px !important;
+  box-decoration-break: clone !important;
+  -webkit-box-decoration-break: clone !important;
+  letter-spacing: 0.02em !important;
 }
 
-/* 1. 默认无指定颜色时的温润浅黄兜底 */
+/* 1. 经典荧光黄：纯正碳墨黑字色 + 亮黄高透底色 (对比度 12.5:1) */
 .rich-rendered mark:not([data-color]):not([style*="background"]):not(.search-highlight),
-.tiptap mark:not([data-color]):not([style*="background"]):not(.search-highlight) {
-  background-color: #FEF08A;
-  color: #713F12;
+.tiptap mark:not([data-color]):not([style*="background"]):not(.search-highlight),
+mark[data-color="#FEF08A"],
+mark[style*="#FEF08A"],
+mark[style*="rgb(254, 240, 138)"] {
+  background-color: #FDE047 !important; /* 清透高对比荧光黄 */
+  color: #0F172A !important;             /* 纯正碳黑字色，杜绝棕色发虚 */
 }
 
-/* 2. 荧光黄 (#FEF08A) 专属字色 */
-mark[data-color="#FEF08A"], mark[style*="#FEF08A"], mark[style*="rgb(254, 240, 138)"] {
-  color: #713F12 !important;
+/* 2. 青草绿荧光笔 */
+mark[data-color="#A7F3D0"],
+mark[style*="#A7F3D0"],
+mark[style*="rgb(167, 243, 208)"] {
+  background-color: #86EFAC !important;
+  color: #022C22 !important;             /* 深极墨绿 */
 }
 
-/* 3. 青草绿 (#A7F3D0) 专属深林墨绿字色 */
-mark[data-color="#A7F3D0"], mark[style*="#A7F3D0"], mark[style*="rgb(167, 243, 208)"] {
-  color: #064E3B !important;
+/* 3. 晴空蓝荧光笔 */
+mark[data-color="#BAE6FD"],
+mark[style*="#BAE6FD"],
+mark[style*="rgb(186, 230, 253)"] {
+  background-color: #7DD3FC !important;
+  color: #082F49 !important;             /* 深海墨蓝 */
 }
 
-/* 4. 晴空蓝 (#BAE6FD) 专属深海藏青字色 */
-mark[data-color="#BAE6FD"], mark[style*="#BAE6FD"], mark[style*="rgb(186, 230, 253)"] {
-  color: #0C4A6E !important;
-}
-
-/* 5. 樱花粉 (#FDA4AF) 专属酒红浆果字色 */
-mark[data-color="#FDA4AF"], mark[style*="#FDA4AF"], mark[style*="rgb(253, 164, 175)"] {
-  color: #881337 !important;
+/* 4. 樱花粉荧光笔 */
+mark[data-color="#FDA4AF"],
+mark[style*="#FDA4AF"],
+mark[style*="rgb(253, 164, 175)"] {
+  background-color: #FCA5A5 !important;
+  color: #450A0A !important;             /* 极深浆果红 */
 }

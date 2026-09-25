@@ -1,4 +1,3 @@
-import { TERMS } from "../constants/terms";
 import { ref, computed } from "vue";
 import type { QuoteDetail, Thought, BacklinkItem } from "../types";
 
@@ -10,8 +9,10 @@ const quotesMap = ref<Map<string, QuoteDetail>>(new Map());
 const totalQuotesCount = ref<number>(0);
 
 export function useKnowledgeBase() {
-  // 1. 基础派生数据（任何实体的变动都会自动触发视图更新）
-  const allQuotes = computed<QuoteDetail[]>(() => Array.from(quotesMap.value.values()));
+  // 1. 基础派生数据：严格按 created_at 降序排列，保证撤销恢复条目瞬回原位
+  const allQuotes = computed<QuoteDetail[]>(() => {
+    return Array.from(quotesMap.value.values()).sort((a, b) => b.created_at - a.created_at);
+  });
   
   // 引用字典统一由 Map 实时派生，消灭副本割裂
   const quoteLookupMap = computed<Record<string, QuoteDetail>>(() => {
@@ -22,110 +23,30 @@ export function useKnowledgeBase() {
     return dict;
   });
 
-  // ----------------- 响应式双向关系图谱 (Reactive Knowledge Graph) -----------------
-  const backlinkGraph = computed<Map<string, BacklinkItem[]>>(() => {
-    const graph = new Map<string, BacklinkItem[]>();
+  // ----------------- 高性能轻量反链缓存系统 (消灭全量正则计算) -----------------
+  // 反链详情与数量直接由 SQLite B-Tree 查询驱动，零 CPU 掉帧
+  const backlinksCache = ref<Map<string, BacklinkItem[]>>(new Map());
 
-    const addLink = (targetId: string, item: BacklinkItem) => {
-      if (!graph.has(targetId)) {
-        graph.set(targetId, []);
-      }
-      graph.get(targetId)!.push(item);
-    };
-
-    // 纯净提取真实文本（剔除所有 HTML 标签与引用语法本身）
-    const stripAllMarkup = (raw: string): string => {
-      if (!raw) return "";
-      return raw
-        .replace(/\[quote:[^\]]+\]/g, " ")
-        .replace(/!\[.*?\]\(img:[^)]+\)/g, " ")
-        .replace(/<[^>]+>/g, " ")
-        .replace(/&nbsp;/gi, " ")
-        .replace(/&[a-z]+;/gi, " ")
-        .replace(/\s+/g, " ")
-        .trim();
-    };
-
-    const regex = /(?:\[quote:([a-zA-Z0-9_\-\.]+)(?:\|[^\]]*)?\]|data-quote-id="([a-zA-Z0-9_\-\.]+)")/g;
-
-    for (const sourceCard of quotesMap.value.values()) {
-      // 1. 检查正文中的引用
-      if (sourceCard.content) {
-        let m: RegExpExecArray | null;
-        regex.lastIndex = 0;
-        while ((m = regex.exec(sourceCard.content)) !== null) {
-          const targetId = m[1] || m[2];
-          if (targetId !== sourceCard.id) {
-            // 核心修复：提取来源卡片 (sourceCard) 自己的真正文本！
-            let actualSnippet = stripAllMarkup(sourceCard.content);
-
-            // 如果来源卡片正文除了引用没写别的字，但它挂了思考年轮，穿透提取它年轮里的思考！
-            if (!actualSnippet && sourceCard.thoughts && sourceCard.thoughts.length > 0) {
-              const thSnippet = stripAllMarkup(sourceCard.thoughts[0].content);
-              if (thSnippet) {
-                actualSnippet = `年轮思考: ${thSnippet}`;
-              }
-            }
-
-            // 如果确实整张卡片啥字都没写
-            if (!actualSnippet) {
-              actualSnippet = sourceCard.source 
-                ? `引用于出处《${sourceCard.source}》的手记` 
-                : TERMS.backlinks.onlyLinkFallback;
-            }
-
-            addLink(targetId, {
-              source_quote_id: sourceCard.id,
-              source_thought_id: null,
-              is_question: sourceCard.is_question,
-              quote_source: sourceCard.source,
-              context_snippet: actualSnippet.slice(0, 160) + (actualSnippet.length > 160 ? "..." : ""),
-              created_at: sourceCard.created_at,
-            });
-          }
-        }
-      }
-
-      // 2. 检查年轮思考中的引用
-      for (const th of sourceCard.thoughts || []) {
-        if (th.content) {
-          let m: RegExpExecArray | null;
-          regex.lastIndex = 0;
-          while ((m = regex.exec(th.content)) !== null) {
-            const targetId = m[1] || m[2];
-            if (targetId !== sourceCard.id) {
-              // 提取该年轮思考中除了引用之外写的真实感想
-              let thSnippet = stripAllMarkup(th.content);
-              if (!thSnippet) {
-                // 如果年轮思考只放了引用，提取主原句正文作为上下文
-                const mainSnippet = stripAllMarkup(sourceCard.content);
-                thSnippet = mainSnippet ? `${TERMS.backlinks.quotePrefix}${mainSnippet}` : TERMS.backlinks.emptyFallback;
-              }
-
-              addLink(targetId, {
-                source_quote_id: sourceCard.id,
-                source_thought_id: th.id,
-                is_question: sourceCard.is_question,
-                quote_source: sourceCard.source,
-                context_snippet: thSnippet.slice(0, 160) + (thSnippet.length > 160 ? "..." : ""),
-                created_at: th.created_at,
-              });
-            }
-          }
-        }
-      }
-    }
-
-    return graph;
-  });
-
-  // 纯响应式只读接口：卡片直接调用，自动获得实时反链
   const getBacklinks = (quoteId: string): BacklinkItem[] => {
-    return backlinkGraph.value.get(quoteId) || [];
+    return backlinksCache.value.get(quoteId) || [];
   };
 
   const getBacklinkCount = (quoteId: string): number => {
-    return backlinkGraph.value.get(quoteId)?.length || 0;
+    const card = quotesMap.value.get(quoteId);
+    if (card && card.backlinks_count !== undefined) {
+      return card.backlinks_count;
+    }
+    return backlinksCache.value.get(quoteId)?.length || 0;
+  };
+
+  const loadBacklinksForQuote = async (quoteId: string) => {
+    try {
+      const { invoke } = await import("../ipc-bridge");
+      const list = await invoke<BacklinkItem[]>("get_backlinks", { quoteId });
+      backlinksCache.value.set(quoteId, list || []);
+    } catch (e) {
+      console.error("加载反链明细失败:", e);
+    }
   };
 
   // 2. 批量加载与分页追加
@@ -186,7 +107,6 @@ export function useKnowledgeBase() {
     const card = quotesMap.value.get(quoteId);
     if (!card) return;
     if (!card.thoughts) card.thoughts = [];
-    // 避免重复追加
     if (!card.thoughts.some((t) => t.id === thought.id)) {
       card.thoughts.push(thought);
     }
@@ -243,7 +163,8 @@ export function useKnowledgeBase() {
     removeThought,
     attachTag,
     detachTag,
-    backlinkGraph,
+    backlinksCache,
+    loadBacklinksForQuote,
     getBacklinks,
     getBacklinkCount,
   };
