@@ -54,6 +54,8 @@ const modifierKey = computed(() => (isMac.value ? "⌘" : "Ctrl"));
 const knowledgeBase = useKnowledgeBase();
 const quotes = knowledgeBase.allQuotes;
 const totalQuotesCount = knowledgeBase.totalQuotesCount;
+// 全库真实总数，独立于任何筛选/分页状态，专供界面数字展示使用（见 loadData 内的刷新逻辑）
+const libraryTotalCount = ref<number>(0);
 const currentTab = ref<"capture" | "archive" | "pinned" | "trends">("capture");
 const entryType = ref<0 | 1 | 2>(0); // 0: 客观摘录, 1: 待解之问, 2: 原生感悟
 const isEntryQuestion = computed(() => entryType.value === 1);
@@ -523,27 +525,57 @@ const loadData = async (reset = true) => {
     nextCursor.value = null;
     hasMoreQuotes.value = true;
   }
+  if (!reset && (!hasMoreQuotes.value || isLoadingMore.value)) return;
   try {
     const queryTag = tagsEngine.selectedTag.value;
     const querySearch = searchQuery.value.trim() ? searchQuery.value.trim() : null;
-    const queryOnlyQ = filterOnlyQuestions.value;
+    const timeRange = timelineEngine.selectedTimeRange.value;
 
-    const res = await invoke<any>("get_quotes", {
-      onlyQuestions: false,
-      tag: null,
-      search: null,
-      all: true
-    });
+    // "🌱 深入思考"透镜依赖 thoughts 数量聚合，后端暂无索引化查询支持；
+    // 为保证结果绝对完整（宁可牺牲这一种筛选下的分页收益，也不漏卡片），
+    // 该透镜单独退回全量拉取，不影响其余筛选的分页行为。
+    const needsFullFetch = selectedEntryTypeFilter.value === 'has_thought';
+
+    const params: any = {
+      tag: queryTag || null,
+      search: querySearch,
+      entryType: selectedEntryTypeFilter.value === 'quote' ? 0
+        : selectedEntryTypeFilter.value === 'insight' ? 2
+        : selectedEntryTypeFilter.value === 'question' ? 1
+        : 'all',
+    };
+    if (timeRange) {
+      params.startTs = timeRange.start;
+      params.endTs = timeRange.end;
+      params.timeScope = timelineEngine.timeFilterScope.value;
+    }
+    if (needsFullFetch) {
+      params.all = true;
+    } else {
+      params.cursor = reset ? null : nextCursor.value;
+      params.limit = 40;
+    }
+
+    // 与分页请求并发拉取"全库真实总数"与"时间轴统计"——两者都独立于当前筛选/
+    // 分页状态查询全表，只在 reset（筛选条件变化/首次加载）时才需要刷新。
+    const [res, grandTotal] = await Promise.all([
+      invoke<any>("get_quotes", params),
+      reset ? invoke<number>("get_total_quotes_count") : Promise.resolve(null),
+      reset ? timelineEngine.loadTimelineStats() : Promise.resolve(null),
+    ]);
 
     const items: QuoteDetail[] = Array.isArray(res) ? res : (res.items || []);
     const cursor = res.next_cursor !== undefined ? res.next_cursor : null;
     const more = res.has_more !== undefined ? res.has_more : false;
     const total = res.total_count !== undefined ? res.total_count : items.length;
 
-    knowledgeBase.setQuotes(items, total, !reset);
+    knowledgeBase.setQuotes(items, total, !reset && !needsFullFetch);
 
-    nextCursor.value = cursor;
-    hasMoreQuotes.value = more;
+    nextCursor.value = needsFullFetch ? null : cursor;
+    hasMoreQuotes.value = needsFullFetch ? false : more;
+    if (reset && grandTotal !== null) {
+      libraryTotalCount.value = grandTotal;
+    }
     tagsEngine.tagStats.value = await invoke("get_tag_stats");
     richTextEngine.scanAllImages(items);
   } catch (err) {
@@ -1061,17 +1093,39 @@ const quoteRefSearchQuery = ref("");
 let activeInsertTarget: HTMLTextAreaElement | string | null = null;
 const activeTiptapEditor = ref<any>(null);
 
-const availableQuoteList = computed(() => {
-  const q = quoteRefSearchQuery.value.trim().toLowerCase();
-  return Object.values(quoteLinksEngine.quoteLookupMap.value).filter((item: QuoteDetail) => {
-    if (item.is_question !== 0) return false;
-    if (!q) return true;
-    // 搜索时严格只搜索剥离标签后的纯文字，杜绝将内部 <p>、<span> 识别为关键词
-    const cleanContent = (item.content || '').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ').toLowerCase();
-    const matchContent = cleanContent.includes(q);
-    const matchSource = item.source && item.source.toLowerCase().includes(q);
-    return matchContent || matchSource;
-  });
+// 【关键修复】引用选择器必须能检索全库范围内的摘录，而不仅仅是当前已加载分页
+// 中恰好存在的条目——否则会出现"明明存在却搜不到"的假空结果。因此始终直接
+// 向后端发起检索，而不是过滤客户端内存中的 quoteLookupMap。
+const availableQuoteList = ref<QuoteDetail[]>([]);
+const isQuoteRefSearchLoading = ref(false);
+let quoteRefSearchDebounceTimer: number | null = null;
+
+const runQuoteRefSearch = async () => {
+  isQuoteRefSearchLoading.value = true;
+  try {
+    const q = quoteRefSearchQuery.value.trim();
+    const res = await invoke<any>("get_quotes", {
+      entryType: 0,
+      search: q || null,
+      cursor: null,
+      limit: 60,
+    });
+    const items: QuoteDetail[] = Array.isArray(res) ? res : (res.items || []);
+    availableQuoteList.value = items;
+    // 顺手回填单一真理源，插入引用后立即能在别处正确渲染标题
+    for (const it of items) {
+      knowledgeBase.upsertQuote(it);
+    }
+  } catch (err) {
+    console.error("引用检索失败:", err);
+  } finally {
+    isQuoteRefSearchLoading.value = false;
+  }
+};
+
+watch(quoteRefSearchQuery, () => {
+  if (quoteRefSearchDebounceTimer) window.clearTimeout(quoteRefSearchDebounceTimer);
+  quoteRefSearchDebounceTimer = window.setTimeout(runQuoteRefSearch, 180);
 });
 
 const openQuoteRefPicker = (target: any) => {
@@ -1082,7 +1136,7 @@ const openQuoteRefPicker = (target: any) => {
     activeInsertTarget = target;
   }
   quoteRefSearchQuery.value = "";
-  quoteLinksEngine.fetchAllQuotesSilently();
+  runQuoteRefSearch();
   isQuoteRefPickerOpen.value = true;
 };
 
@@ -1753,7 +1807,7 @@ const handleImportFileInputChange = (e: Event) => {
         >
           <span>📜 年轮</span>
           <span class="text-[10px] px-1.5 py-0.2 rounded-full font-bold bg-emerald-100 text-emerald-700 font-mono">
-            {{ totalQuotesCount }}
+            {{ libraryTotalCount }}
           </span>
           <span class="text-[10.5px] opacity-40 font-mono hidden min-[1020px]:inline">{{ modifierKey }}2</span>
         </button>
@@ -2204,7 +2258,7 @@ const handleImportFileInputChange = (e: Event) => {
                   <span>📂</span>
                   <span>全部条目</span>
                 </div>
-                <span class="font-mono text-[11px] opacity-75">{{ quotes.length }}</span>
+                <span class="font-mono text-[11px] opacity-75">{{ libraryTotalCount }}</span>
               </div>
 
               <!-- 4. 任意深度流式层级投影列表 -->
@@ -2476,7 +2530,7 @@ const handleImportFileInputChange = (e: Event) => {
           @click="handleRichContainerClick"
         >
           <!-- 真正的空库 (全库 0 篇) -->
-          <TulipDecor v-if="totalQuotesCount === 0" type="empty" />
+          <TulipDecor v-if="libraryTotalCount === 0" type="empty" />
 
           <!-- 筛选无果 (全库有数据但当前分类未命中) -> 温和安抚卡片，彻底消除恐慌 -->
           <div 
@@ -2490,7 +2544,7 @@ const handleImportFileInputChange = (e: Event) => {
               当前分类透镜下暂无手记
             </h3>
             <p class="text-xs text-slate-500 max-w-sm leading-relaxed mb-4">
-              请放心，你的数据安全无虞（知识库中现存 <strong class="text-emerald-700 font-mono font-bold">{{ totalQuotesCount }}</strong> 篇手记），只是当前「{{ selectedEntryTypeFilter === 'question' ? '❓ 待解之问' : (selectedEntryTypeFilter === 'insight' ? '💡 原生感悟' : (selectedEntryTypeFilter === 'has_thought' ? '🌱 深入思考' : '📖 客观摘录')) }}」透镜下暂无条目。
+              请放心，你的数据安全无虞（知识库中现存 <strong class="text-emerald-700 font-mono font-bold">{{ libraryTotalCount }}</strong> 篇手记），只是当前「{{ selectedEntryTypeFilter === 'question' ? '❓ 待解之问' : (selectedEntryTypeFilter === 'insight' ? '💡 原生感悟' : (selectedEntryTypeFilter === 'has_thought' ? '🌱 深入思考' : '📖 客观摘录')) }}」透镜下暂无条目。
             </p>
             <button 
               type="button"
@@ -2498,7 +2552,7 @@ const handleImportFileInputChange = (e: Event) => {
               class="px-5 py-2 rounded-xl bg-slate-900 hover:bg-black text-white text-xs font-bold transition-all shadow-sm active:scale-95 cursor-pointer flex items-center gap-1.5"
             >
               <span>↺</span>
-              <span>查看全部手记 ({{ totalQuotesCount }} 篇)</span>
+              <span>查看全部手记 ({{ libraryTotalCount }} 篇)</span>
             </button>
           </div>
 
@@ -3524,7 +3578,7 @@ const handleImportFileInputChange = (e: Event) => {
           <div class="grid grid-cols-2 gap-3">
             <div class="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 flex flex-col gap-0.5">
               <span class="text-[10.5px] font-bold text-slate-400">已收录手记</span>
-              <span class="text-xl font-extrabold text-slate-800 font-mono">{{ quotes.length }} 篇</span>
+              <span class="text-xl font-extrabold text-slate-800 font-mono">{{ libraryTotalCount }} 篇</span>
             </div>
             <div class="p-3.5 rounded-2xl bg-emerald-50/70 border border-emerald-200/80 flex flex-col gap-0.5">
               <span class="text-[10.5px] font-bold text-emerald-800">存储引擎状态</span>

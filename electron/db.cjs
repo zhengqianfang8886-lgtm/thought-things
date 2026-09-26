@@ -310,6 +310,24 @@ async function handleInvoke(cmd, args = {}, electronHelpers = {}) {
         conditions.push(` q.is_question = 1 `);
       }
 
+      // 【新增】时间范围下推：与前端 useTimeline.ts 的 getFilteredQuotes 逻辑保持一致
+      // (timeScope: 'quote' 只匹配原句自身时间 / 'thought' 只匹配任一思考时间 / 'all' 两者之一)，
+      // 确保分页场景下时间轴筛选结果与旧版全量筛选结果完全一致，不会漏卡片。
+      if (typeof args.startTs === 'number' && typeof args.endTs === 'number') {
+        const timeScope = args.timeScope || 'all';
+        const quoteTimeCond = ` (q.created_at >= @startTs AND q.created_at <= @endTs) `;
+        const thoughtTimeCond = ` EXISTS (SELECT 1 FROM thoughts th2 WHERE th2.quote_id = q.id AND th2.created_at >= @startTs AND th2.created_at <= @endTs) `;
+        if (timeScope === 'quote') {
+          conditions.push(quoteTimeCond);
+        } else if (timeScope === 'thought') {
+          conditions.push(thoughtTimeCond);
+        } else {
+          conditions.push(`(${quoteTimeCond} OR ${thoughtTimeCond})`);
+        }
+        params.startTs = args.startTs;
+        params.endTs = args.endTs;
+      }
+
       // 性能优化：在未设置密码锁（明文状态）时，直接下推到 SQLite SQL 引擎，发挥 B-Tree 索引与游标早停优势
       const canSqlSearch = Boolean(search && !masterKey);
       if (canSqlSearch) {
@@ -553,6 +571,13 @@ async function handleInvoke(cmd, args = {}, electronHelpers = {}) {
         FROM tags t LEFT JOIN quote_tags qt ON t.id = qt.tag_id 
         GROUP BY t.id, t.name ORDER BY count DESC, t.name ASC
       `).all();
+    }
+
+    // 【新增】独立于任何筛选/分页状态的全库真实总数，供界面上"年轮 N"等展示位使用，
+    // 确保无论当前有没有开启标签/搜索/时间筛选，显示的总数永远是准确的全库数字。
+    case 'get_total_quotes_count': {
+      const row = db.prepare(`SELECT COUNT(*) as c FROM quotes`).get();
+      return row ? row.c : 0;
     }
 
     case 'get_resurface_quote': {

@@ -23,121 +23,81 @@ export function useTimeline(
     return expandedTimelineMonths.value[monthKey] !== false;
   };
 
+  // 【新增】月/日归档统计必须独立于分页与当前筛选状态，永远反映全库真实数据，
+  // 否则一旦 quotes.value 只是当前加载/筛选出的子集，侧栏的天数/篇数统计就会失真。
+  // 因此改为消费后端 get_timeline_stats（对全表做 GROUP BY，与分页完全解耦）。
+  const remoteDayStats = ref<{
+    quotes: Array<{ day: string; count: number }>;
+    thoughts: Array<{ day: string; count: number }>;
+  } | null>(null);
+
+  const loadTimelineStats = async () => {
+    try {
+      const { invoke } = await import("../ipc-bridge");
+      remoteDayStats.value = await invoke("get_timeline_stats");
+    } catch (e) {
+      console.error("加载时间轴统计失败:", e);
+    }
+  };
+
   const timelineArchiveGroups = computed<MonthArchiveGroup[]>(() => {
+    const weekNames = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
+    const stats = remoteDayStats.value;
+    if (!stats) return [];
+
     const monthMap = new Map<
       string,
-      {
-        label: string;
-        start: number;
-        end: number;
-        daysMap: Map<string, DayArchiveItem>;
-      }
+      { label: string; start: number; end: number; daysMap: Map<string, DayArchiveItem> }
     >();
 
-    const weekNames = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
-    const universe =
-      Object.values(quoteLookupMap.value).length > 0
-        ? Object.values(quoteLookupMap.value)
-        : quotes.value;
+    const ingest = (day: string, count: number, kind: "quote" | "thought") => {
+      if (timeFilterScope.value !== "all" && timeFilterScope.value !== kind) return;
+      const [y, m, dd] = day.split("-").map(Number);
+      if (!y || !m || !dd) return;
+      const mKey = `${y}-${String(m).padStart(2, "0")}`;
+      const dKey = day;
 
-    universe.forEach((q) => {
-      // 1. 原句时间点
-      if (timeFilterScope.value === "all" || timeFilterScope.value === "quote") {
-        const d = new Date(q.created_at);
-        const mKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-        const dKey = `${mKey}-${String(d.getDate()).padStart(2, "0")}`;
-
-        if (!monthMap.has(mKey)) {
-          const mStart = new Date(d.getFullYear(), d.getMonth(), 1).getTime();
-          const mEnd = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59, 999).getTime();
-          monthMap.set(mKey, {
-            label: `${d.getFullYear()} 年 ${String(d.getMonth() + 1).padStart(2, "0")} 月`,
-            start: mStart,
-            end: mEnd,
-            daysMap: new Map(),
-          });
-        }
-        const mEntry = monthMap.get(mKey)!;
-        if (!mEntry.daysMap.has(dKey)) {
-          const dStart = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0).getTime();
-          const dEnd = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999).getTime();
-          mEntry.daysMap.set(dKey, {
-            key: dKey,
-            label: `${String(d.getMonth() + 1).padStart(2, "0")}月${String(d.getDate()).padStart(2, "0")}日`,
-            dayOfWeek: weekNames[d.getDay()],
-            start: dStart,
-            end: dEnd,
-            quoteCount: 0,
-            thoughtCount: 0,
-            totalCount: 0,
-          });
-        }
-        const dEntry = mEntry.daysMap.get(dKey)!;
-        dEntry.quoteCount += 1;
-        dEntry.totalCount += 1;
-      }
-
-      // 2. 年轮认知时间点
-      if (timeFilterScope.value === "all" || timeFilterScope.value === "thought") {
-        (q.thoughts || []).forEach((th) => {
-          const d = new Date(th.created_at);
-          const mKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-          const dKey = `${mKey}-${String(d.getDate()).padStart(2, "0")}`;
-
-          if (!monthMap.has(mKey)) {
-            const mStart = new Date(d.getFullYear(), d.getMonth(), 1).getTime();
-            const mEnd = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59, 999).getTime();
-            monthMap.set(mKey, {
-              label: `${d.getFullYear()} 年 ${String(d.getMonth() + 1).padStart(2, "0")} 月`,
-              start: mStart,
-              end: mEnd,
-              daysMap: new Map(),
-            });
-          }
-          const mEntry = monthMap.get(mKey)!;
-          if (!mEntry.daysMap.has(dKey)) {
-            const dStart = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0).getTime();
-            const dEnd = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999).getTime();
-            mEntry.daysMap.set(dKey, {
-              key: dKey,
-              label: `${String(d.getMonth() + 1).padStart(2, "0")}月${String(d.getDate()).padStart(2, "0")}日`,
-              dayOfWeek: weekNames[d.getDay()],
-              start: dStart,
-              end: dEnd,
-              quoteCount: 0,
-              thoughtCount: 0,
-              totalCount: 0,
-            });
-          }
-          const dEntry = mEntry.daysMap.get(dKey)!;
-          dEntry.thoughtCount += 1;
-          dEntry.totalCount += 1;
+      if (!monthMap.has(mKey)) {
+        const mStart = new Date(y, m - 1, 1).getTime();
+        const mEnd = new Date(y, m, 0, 23, 59, 59, 999).getTime();
+        monthMap.set(mKey, {
+          label: `${y} 年 ${String(m).padStart(2, "0")} 月`,
+          start: mStart,
+          end: mEnd,
+          daysMap: new Map(),
         });
       }
-    });
+      const mEntry = monthMap.get(mKey)!;
+      if (!mEntry.daysMap.has(dKey)) {
+        const d = new Date(y, m - 1, dd);
+        const dStart = new Date(y, m - 1, dd, 0, 0, 0, 0).getTime();
+        const dEnd = new Date(y, m - 1, dd, 23, 59, 59, 999).getTime();
+        mEntry.daysMap.set(dKey, {
+          key: dKey,
+          label: `${String(m).padStart(2, "0")}月${String(dd).padStart(2, "0")}日`,
+          dayOfWeek: weekNames[d.getDay()],
+          start: dStart,
+          end: dEnd,
+          quoteCount: 0,
+          thoughtCount: 0,
+          totalCount: 0,
+        });
+      }
+      const dEntry = mEntry.daysMap.get(dKey)!;
+      if (kind === "quote") dEntry.quoteCount += count;
+      else dEntry.thoughtCount += count;
+      dEntry.totalCount += count;
+    };
+
+    (stats.quotes || []).forEach((r) => ingest(r.day, r.count, "quote"));
+    (stats.thoughts || []).forEach((r) => ingest(r.day, r.count, "thought"));
 
     return Array.from(monthMap.entries())
       .sort((a, b) => b[0].localeCompare(a[0]))
       .map(([mKey, v]) => {
         const days = Array.from(v.daysMap.values()).sort((a, b) => b.key.localeCompare(a.key));
-        const mTotal = days.reduce(
-          (sum, d) =>
-            sum +
-            (timeFilterScope.value === "thought"
-              ? d.thoughtCount
-              : timeFilterScope.value === "quote"
-              ? d.quoteCount
-              : d.totalCount),
-          0
-        );
-        return {
-          key: mKey,
-          label: v.label,
-          start: v.start,
-          end: v.end,
-          totalCount: mTotal,
-          days,
-        };
+        const mTotal = days.reduce((sum, d) => sum + d.totalCount, 0);
+        return { key: mKey, label: v.label, start: v.start, end: v.end, totalCount: mTotal, days };
       });
   });
 
@@ -193,5 +153,6 @@ export function useTimeline(
     toggleMonthTimelineExpand,
     isMonthTimelineExpanded,
     getFilteredQuotes,
+    loadTimelineStats,
   };
 }
