@@ -303,7 +303,9 @@ async function handleInvoke(cmd, args = {}, electronHelpers = {}) {
         params.tagLike = `${tagPrefix}/%`;
       }
 
-      if (args.entryType !== undefined && args.entryType !== 'all') {
+      if (args.entryType === 'has_thought') {
+        conditions.push(` EXISTS (SELECT 1 FROM thoughts th_ht WHERE th_ht.quote_id = q.id) `);
+      } else if (args.entryType !== undefined && args.entryType !== 'all') {
         conditions.push(` q.is_question = @entryType `);
         params.entryType = args.entryType;
       } else if (onlyQ) {
@@ -575,6 +577,25 @@ async function handleInvoke(cmd, args = {}, electronHelpers = {}) {
 
     // 【新增】独立于任何筛选/分页状态的全库真实总数，供界面上"年轮 N"等展示位使用，
     // 确保无论当前有没有开启标签/搜索/时间筛选，显示的总数永远是准确的全库数字。
+    case 'get_entry_type_stats': {
+      const row = db.prepare(`
+        SELECT 
+          COUNT(*) AS total,
+          COUNT(CASE WHEN is_question = 0 THEN 1 END) AS quote_count,
+          COUNT(CASE WHEN is_question = 2 THEN 1 END) AS insight_count,
+          COUNT(CASE WHEN is_question = 1 THEN 1 END) AS question_count,
+          (SELECT COUNT(DISTINCT quote_id) FROM thoughts) AS thought_count
+        FROM quotes
+      `).get();
+      return {
+        total: row ? row.total : 0,
+        quote: row ? row.quote_count : 0,
+        insight: row ? row.insight_count : 0,
+        question: row ? row.question_count : 0,
+        has_thought: row ? row.thought_count : 0,
+      };
+    }
+
     case 'get_total_quotes_count': {
       const row = db.prepare(`SELECT COUNT(*) as c FROM quotes`).get();
       return row ? row.c : 0;
@@ -621,6 +642,14 @@ async function handleInvoke(cmd, args = {}, electronHelpers = {}) {
       const targetPath = path.join(backupsDir, `thought_rings_snapshot_${dateStr}.db`);
       await db.backup(targetPath);
       return { filename: path.basename(targetPath), path: targetPath };
+    }
+
+        case 'open_external_url': {
+      if (args.url && electronHelpers.shell) {
+        electronHelpers.shell.openExternal(args.url);
+        return true;
+      }
+      return false;
     }
 
     case 'open_user_data_folder': {

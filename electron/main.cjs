@@ -88,6 +88,24 @@ function createWindow() {
   const devUrl = 'http://localhost:1420';
     loadDevServerWithRetry(mainWindow, devUrl);
   }
+
+  // 🛡️ 核心防线 1：严禁任何外部超链接劫持 ThoughtRings 窗口
+  mainWindow.webContents.on('will-navigate', (event, navigationUrl) => {
+    const isDevServer = navigationUrl.startsWith('http://localhost:1420');
+    if (!isDevServer) {
+      event.preventDefault();
+      shell.openExternal(navigationUrl); // 安全重定向至外部默认浏览器，绝不污染应用窗口
+    }
+  });
+
+  // 🛡️ 核心防线 2：拦截所有 window.open 或 target="_blank"，拒绝应用内弹网页
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      shell.openExternal(url);
+    }
+    return { action: 'deny' }; // 永久拒绝在 Electron 内部开新窗口
+  });
+
 }
 
 app.whenReady().then(() => {

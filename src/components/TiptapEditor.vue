@@ -15,11 +15,11 @@
       <button type="button" @click="editor?.chain().focus().toggleStrike().run()" title="删除线" class="w-6 h-6 rounded hover:bg-slate-200/70 text-xs line-through text-slate-700 flex items-center justify-center cursor-pointer">S</button>
       <span class="w-[1px] h-3.5 bg-slate-200 mx-0.5"></span>
 
-      <!-- 彩虹高亮荧光笔 -->
-      <button type="button" @click="editor?.chain().focus().toggleHighlight({ color: '#FEF08A' }).run()" title="荧光黄" class="w-3.5 h-3.5 rounded-full bg-amber-300 hover:scale-110 cursor-pointer shadow-2xs mx-0.5"></button>
-      <button type="button" @click="editor?.chain().focus().toggleHighlight({ color: '#A7F3D0' }).run()" title="青草绿" class="w-3.5 h-3.5 rounded-full bg-emerald-400 hover:scale-110 cursor-pointer shadow-2xs mx-0.5"></button>
-      <button type="button" @click="editor?.chain().focus().toggleHighlight({ color: '#BAE6FD' }).run()" title="晴空蓝" class="w-3.5 h-3.5 rounded-full bg-sky-400 hover:scale-110 cursor-pointer shadow-2xs mx-0.5"></button>
-      <button type="button" @click="editor?.chain().focus().toggleHighlight({ color: '#FDA4AF' }).run()" title="樱花粉" class="w-3.5 h-3.5 rounded-full bg-rose-300 hover:scale-110 cursor-pointer shadow-2xs mx-0.5"></button>
+      <!-- 出版级四色墨晕调色盘 -->
+      <button type="button" @click="editor?.chain().focus().toggleHighlight({ color: '#FEF3C7' }).run()" title="琥珀金 · 核心原句/顿悟" class="w-3.5 h-3.5 rounded-full bg-[#F59E0B] border border-white hover:scale-125 transition-transform cursor-pointer shadow-2xs mx-0.5"></button>
+      <button type="button" @click="editor?.chain().focus().toggleHighlight({ color: '#DCFCE7' }).run()" title="翡翠绿 · 关键结论/论据" class="w-3.5 h-3.5 rounded-full bg-[#10B981] border border-white hover:scale-125 transition-transform cursor-pointer shadow-2xs mx-0.5"></button>
+      <button type="button" @click="editor?.chain().focus().toggleHighlight({ color: '#E0F2FE' }).run()" title="晴空蓝 · 概念/逻辑脉络" class="w-3.5 h-3.5 rounded-full bg-[#0284C7] border border-white hover:scale-125 transition-transform cursor-pointer shadow-2xs mx-0.5"></button>
+      <button type="button" @click="editor?.chain().focus().toggleHighlight({ color: '#FFE4E6' }).run()" title="落樱粉 · 警惕/存疑反思" class="w-3.5 h-3.5 rounded-full bg-[#F43F5E] border border-white hover:scale-125 transition-transform cursor-pointer shadow-2xs mx-0.5"></button>
       <span class="w-[1px] h-3.5 bg-slate-200 mx-0.5"></span>
 
       <!-- 打勾清单 -->
@@ -57,7 +57,7 @@
 
     <!-- 自适应弹性高度编辑画布 (行内随字数向上撑开，长文本丝滑内滚，带右下角拉高手柄) -->
     <div 
-      class="flex-1 min-h-0 overflow-y-auto stable-scroll p-3.5 bg-white resize-y"
+      class="flex-1 min-h-0 overflow-y-auto stable-scroll p-3.5 bg-white"
       :style="{ 
         minHeight: minHeight || '110px',
         maxHeight: maxHeight || '450px'

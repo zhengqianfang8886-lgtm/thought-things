@@ -3,6 +3,11 @@
 @tailwind utilities;
 
 :root, :root[data-theme="tulip"] {
+  --font-scale-ratio: 1;
+  --font-size-base: 15px;
+  --font-size-card: 15px;
+  --font-size-editor: 16px;
+  --line-height-body: 1.8;
   --bg-app: #F4F6F3;
   --bg-surface: #FFFFFF;
   --bg-subtle: #EAF0E9;
@@ -32,7 +37,7 @@ html, body {
   color: var(--text-main);
   user-select: none;
   font-family: var(--font-custom);
-  -webkit-font-smoothing: auto;
+  -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
   -moz-osx-font-smoothing: auto;
   text-rendering: optimizeLegibility;
 }
@@ -49,6 +54,7 @@ html, body {
 .stable-scroll {
   overflow-y: auto;
   scrollbar-gutter: stable;
+  overflow-anchor: none !important; /* 核心：彻底封印浏览器默认锚定，防止向下滚动时与 spacer 拔河抽搐 */
 }
 
 .soft-card {
@@ -112,8 +118,8 @@ textarea, input {
   color: #1E293B !important;
   font-family: "Noto Sans CJK SC", "Source Han Sans SC", "PingFang SC", "Microsoft YaHei", -apple-system, system-ui, sans-serif !important;
   font-weight: 400 !important;
-  font-size: 15px !important;
-  line-height: 1.75 !important;
+  font-size: var(--tr-card-font-size, 15px) !important;
+  line-height: var(--tr-card-line-height, 1.75) !important;
   word-break: break-all !important;
   overflow-wrap: anywhere !important;
   white-space: pre-wrap !important;
@@ -494,7 +500,7 @@ ul[data-type="taskList"] li[data-type="taskItem"][data-checked="true"] > div {
 .tiptap-container li:not([data-type="taskItem"]),
 .rich-rendered li:not([data-type="taskItem"]) {
   margin: 3px 0 !important;
-  line-height: 1.75 !important;
+  line-height: var(--tr-card-line-height, 1.75) !important;
 }
 
 /* --- 专注模式极致丝滑滚动通道 --- */
@@ -509,84 +515,213 @@ ul[data-type="taskList"] li[data-type="taskItem"][data-checked="true"] > div {
   contain: paint;
 }
 
-/* ==========================================================================
-   ThoughtRings 典雅高亮设计系统 (郁金香晨光琥珀金 Amber Dawn)
-   - 与清晨翡翠绿 (#10B981) 构成经典的自然生机互补色
-   - 双色光泽渐变配合实体马克笔斜切压痕底线，极度吸睛且不刺目
-   - 9.2:1 深度暖木字墨对比度，跨行平滑圆润包裹
-   ========================================================================== */
 
+/* ==========================================================================
+   ThoughtRings 搜索命中独立高亮系统 (极光紫罗兰 Iris Glow)
+   - 彻底区别于用户自选的四色笔记高亮（琥珀金/翡翠绿/晴空蓝/落樱粉）
+   - 高亮底色：柔和极光紫 (#EDE9FE)，字墨：极深海墨紫 (#3B0764，对比度高达 14.5:1)
+   - 下边缘：2px 鲜明紫罗兰切线 (#8B5CF6) + 1px 细微发光包裹，一眼即见
+   ========================================================================== */
 .search-highlight {
-  background: linear-gradient(180deg, rgba(254, 243, 199, 0.96) 0%, rgba(253, 230, 138, 0.96) 100%) !important;
-  color: #451A03 !important;
-  font-weight: 650 !important;
-  padding: 1px 4px 1.5px 4px !important;
+  background-color: #EDE9FE !important;
+  color: #3B0764 !important;
+  font-weight: 700 !important;
+  padding: 1.5px 4.5px 2px 4.5px !important;
   margin: 0 1px !important;
   border-radius: 4px !important;
-  border-bottom: 2px solid #F59E0B !important;
+  border-bottom: 2px solid #8B5CF6 !important;
   box-shadow: 
-    0 0 0 1px rgba(245, 158, 11, 0.35),
-    0 1.5px 4px -1px rgba(217, 119, 6, 0.22) !important;
+    0 0 0 1px rgba(139, 92, 246, 0.35),
+    0 2px 6px -1px rgba(109, 40, 217, 0.22) !important;
   text-decoration: none !important;
-  box-decoration-break: clone;
-  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone !important;
+  -webkit-box-decoration-break: clone !important;
   display: inline !important;
+  letter-spacing: 0.015em !important;
   transition: all 0.15s ease !important;
 }
 
 .search-highlight:hover {
-  background: linear-gradient(180deg, #FDE68A 0%, #FCD34D 100%) !important;
+  background-color: #DDD6FE !important;
   box-shadow: 
-    0 0 0 1.5px rgba(217, 119, 6, 0.6),
-    0 2px 6px -1px rgba(217, 119, 6, 0.35) !important;
+    0 0 0 1.5px rgba(124, 58, 237, 0.6),
+    0 3px 8px -1px rgba(109, 40, 217, 0.35) !important;
 }
+
+
 /* ==========================================================================
-   ThoughtRings 极致高对比度荧光笔体系 (彻底解决文字发虚与细笔画被吞噬问题)
+   1. 渲染抗模糊加固系统 (Anti-Blur GPU Pixel-Snapping)
+   ========================================================================== */
+.tiptap-container,
+.ProseMirror,
+.rich-rendered,
+.tiptap-editor-box {
+  transform: translateZ(0); /* 强制提升独立硬件图层，但保持像素对齐 */
+  backface-visibility: hidden;
+  text-rendering: optimizeLegibility !important;
+  -webkit-font-smoothing: antialiased !important;
+  font-feature-settings: "kern" 1, "palt" 1;
+}
+
+
+
+/* ==========================================================================
+   ThoughtRings 高能视觉抢夺高亮系统 (Visual Dominance Highlighter)
+   - 核心原则：强反差、抢夺眼球、字墨 100% 纯黑不淡化、700 绝对加粗
+   - 对比度：高达 16.5:1 (极黑炭墨 + 高明度经典荧光)
    ========================================================================== */
 
-/* 全局 mark 标签：字墨强制深黑、字重加粗半档、笔画清晰骨架挺拔 */
+/* 全局高能 mark 基准：黑度锁死、字重碾压、多行自然包裹 */
 .rich-rendered mark,
 .tiptap mark,
-.tiptap-container mark {
-  font-weight: 650 !important; /* 彻底加固宋体/衬线体极细横笔画 */
-  padding: 1px 5px !important;
-  margin: 0 1px !important;
+.tiptap-container mark,
+mark:not(.search-highlight) {
+  display: inline !important;
+  color: #000000 !important;                    /* 100% 纯正极黑炭墨，绝不淡化！ */
+  font-weight: 700 !important;                  /* 700 粗体绝对压制，第一眼抓住眼球！ */
+  padding: 1.5px 5px !important;                /* 水平留足 5px 笔触宽度，视觉块感极强 */
+  margin: 0 1.5px !important;
   border-radius: 4px !important;
+  border: none !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04) !important;
   box-decoration-break: clone !important;
   -webkit-box-decoration-break: clone !important;
   letter-spacing: 0.02em !important;
+  text-rendering: optimizeLegibility !important;
 }
 
-/* 1. 经典荧光黄：纯正碳墨黑字色 + 亮黄高透底色 (对比度 12.5:1) */
+/* 1. 闪电曜金 (经典高能荧光黄 · 核心顿悟/黄金原句) - 默认高亮 */
 .rich-rendered mark:not([data-color]):not([style*="background"]):not(.search-highlight),
 .tiptap mark:not([data-color]):not([style*="background"]):not(.search-highlight),
 mark[data-color="#FEF08A"],
+mark[data-color="#FEF3C7"],
 mark[style*="#FEF08A"],
-mark[style*="rgb(254, 240, 138)"] {
-  background-color: #FDE047 !important; /* 清透高对比荧光黄 */
-  color: #0F172A !important;             /* 纯正碳黑字色，杜绝棕色发虚 */
+mark[style*="#FEF3C7"],
+mark[style*="rgb(254, 240, 138)"],
+mark[style*="rgb(254, 243, 199)"] {
+  background-color: #FDE047 !important; /* 纯正高饱和荧光亮黄 (高能聚光灯) */
 }
 
-/* 2. 青草绿荧光笔 */
+/* 2. 极光霓绿 (高能荧光薄荷 · 关键结论/事实论据) */
 mark[data-color="#A7F3D0"],
+mark[data-color="#DCFCE7"],
 mark[style*="#A7F3D0"],
-mark[style*="rgb(167, 243, 208)"] {
-  background-color: #86EFAC !important;
-  color: #022C22 !important;             /* 深极墨绿 */
+mark[style*="#DCFCE7"],
+mark[style*="rgb(167, 243, 208)"],
+mark[style*="rgb(220, 252, 231)"] {
+  background-color: #86EFAC !important; /* 鲜明荧光绿 */
 }
 
-/* 3. 晴空蓝荧光笔 */
+/* 3. 电光晴蓝 (高能冰川亮青 · 概念/逻辑脉络) */
 mark[data-color="#BAE6FD"],
+mark[data-color="#E0F2FE"],
 mark[style*="#BAE6FD"],
-mark[style*="rgb(186, 230, 253)"] {
-  background-color: #7DD3FC !important;
-  color: #082F49 !important;             /* 深海墨蓝 */
+mark[style*="#E0F2FE"],
+mark[style*="rgb(186, 230, 253)"],
+mark[style*="rgb(224, 242, 254)"] {
+  background-color: #7DD3FC !important; /* 高能亮天蓝 */
 }
 
-/* 4. 樱花粉荧光笔 */
+/* 4. 烈焰珊瑚 (高能草莓鲜粉 · 警惕/存疑反思) */
 mark[data-color="#FDA4AF"],
+mark[data-color="#FFE4E6"],
 mark[style*="#FDA4AF"],
-mark[style*="rgb(253, 164, 175)"] {
-  background-color: #FCA5A5 !important;
-  color: #450A0A !important;             /* 极深浆果红 */
+mark[style*="#FFE4E6"],
+mark[style*="rgb(253, 164, 175)"],
+mark[style*="rgb(255, 228, 230)"] {
+  background-color: #FCA5A5 !important; /* 鲜艳珊瑚红 */
+}
+
+/* 正文中暗藏的外链：温和天青蓝细下划线，一眼辨别，绝非隐形地雷 */
+.rich-rendered a:not(.quote-link-badge) {
+  color: #0284C7 !important;
+  text-decoration: underline !important;
+  text-decoration-color: rgba(2, 132, 199, 0.4) !important;
+  text-underline-offset: 3px !important;
+  cursor: pointer !important;
+  transition: color 0.15s ease !important;
+}
+.rich-rendered a:not(.quote-link-badge):hover {
+  color: #0369A1 !important;
+  text-decoration-color: #0369A1 !important;
+}
+
+
+/* --- 全局字体弹性调控系统 (防布局穿透架构) --- */
+html[data-font-size="compact"] {
+  --font-scale-ratio: 0.92;
+  --font-size-base: 13.5px;
+  --font-size-card: 14px;
+  --font-size-editor: 14.5px;
+  --line-height-body: 1.7;
+}
+
+html[data-font-size="normal"] {
+  --font-scale-ratio: 1.0;
+  --font-size-base: 15px;
+  --font-size-card: 15px;
+  --font-size-editor: 16px;
+  --line-height-body: 1.8;
+}
+
+html[data-font-size="large"] {
+  --font-scale-ratio: 1.12;
+  --font-size-base: 16.5px;
+  --font-size-card: 17px;
+  --font-size-editor: 18px;
+  --line-height-body: 1.9;
+}
+
+/* 核心阅读与录入正文直连弹性字号变量 */
+.rich-rendered {
+  font-size: var(--font-size-card) !important;
+  line-height: var(--line-height-body) !important;
+}
+
+.tiptap-container,
+.tiptap-container .tiptap {
+  font-size: var(--font-size-editor) !important;
+  line-height: var(--line-height-body) !important;
+}
+
+
+/* === ThoughtRings 强效字号动态穿透系统 (最高优先级) === */
+html[data-font-size="compact"] {
+  font-size: 14px !important;
+  --tr-card-font-size: 13.5px !important;
+  --tr-card-line-height: 1.65 !important;
+}
+
+html[data-font-size="normal"] {
+  font-size: 16px !important;
+  --tr-card-font-size: 15px !important;
+  --tr-card-line-height: 1.75 !important;
+}
+
+html[data-font-size="large"] {
+  font-size: 18px !important;
+  --tr-card-font-size: 17.5px !important;
+  --tr-card-line-height: 1.9 !important;
+}
+
+/* 强制穿透覆盖卡片正文与编辑器正文 */
+html[data-font-size="compact"] .rich-rendered,
+html[data-font-size="compact"] .tiptap-container,
+html[data-font-size="compact"] .tiptap {
+  font-size: 13.5px !important;
+  line-height: 1.65 !important;
+}
+
+html[data-font-size="normal"] .rich-rendered,
+html[data-font-size="normal"] .tiptap-container,
+html[data-font-size="normal"] .tiptap {
+  font-size: 15px !important;
+  line-height: 1.75 !important;
+}
+
+html[data-font-size="large"] .rich-rendered,
+html[data-font-size="large"] .tiptap-container,
+html[data-font-size="large"] .tiptap {
+  font-size: 17.5px !important;
+  line-height: 1.9 !important;
 }

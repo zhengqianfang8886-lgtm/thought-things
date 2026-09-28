@@ -12,10 +12,10 @@ export interface VirtualScrollOptions<T> {
 export function useVirtualScroll<T>(options: VirtualScrollOptions<T>) {
   const {
     items,
-    estimatedItemHeight = 260,
+    estimatedItemHeight = 220,
     itemGap = 24, // 对应 Tailwind gap-6 = 24px
-    bufferCount = 5,
-    virtualThreshold = 25,
+    bufferCount = 8,
+    virtualThreshold = 60,
     keyGetter,
   } = options;
 
@@ -33,7 +33,17 @@ export function useVirtualScroll<T>(options: VirtualScrollOptions<T>) {
   // 1. 同步创建元素尺寸观测器
   if (typeof window !== "undefined" && "ResizeObserver" in window) {
     let pendingUpdates = false;
+    let rafUpdateId: number | null = null;
+    const scheduleHeightVersionUpdate = () => {
+      if (rafUpdateId !== null) return;
+      rafUpdateId = requestAnimationFrame(() => {
+        rafUpdateId = null;
+        heightVersion.value++;
+      });
+    };
+
     itemResizeObserver = new ResizeObserver((entries) => {
+      let changed = false;
       for (const entry of entries) {
         const target = entry.target as HTMLElement;
         const key = target.getAttribute("data-virtual-key");
@@ -41,13 +51,12 @@ export function useVirtualScroll<T>(options: VirtualScrollOptions<T>) {
           const h = Math.round(target.offsetHeight);
           if (h > 0 && measuredHeights.get(key) !== h) {
             measuredHeights.set(key, h);
-            pendingUpdates = true;
+            changed = true;
           }
         }
       }
-      if (pendingUpdates) {
-        pendingUpdates = false;
-        heightVersion.value++;
+      if (changed) {
+        scheduleHeightVersionUpdate();
       }
     });
 
@@ -225,10 +234,10 @@ export function useVirtualScroll<T>(options: VirtualScrollOptions<T>) {
     if (itemResizeObserver) {
       itemResizeObserver.observe(el);
     }
+    // 关键根治：仅将高度记录进 Map，严禁在 Vue 挂载周期直接触发 heightVersion.value++，由 RAF 异步结算
     const h = el.offsetHeight;
     if (h > 0 && measuredHeights.get(key) !== h) {
       measuredHeights.set(key, h);
-      heightVersion.value++;
     }
   };
 

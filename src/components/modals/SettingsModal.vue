@@ -19,6 +19,47 @@
         </button>
       </div>
 
+      <!-- 全局阅读字号调节 -->
+      <div class="flex flex-col gap-2.5 p-4 rounded-2xl bg-slate-50 border border-slate-200/80 shadow-2xs">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+            <span>🔍</span>
+            <span>手记阅读字号</span>
+          </span>
+          <span class="text-[10px] text-slate-400 font-mono">支持快捷键 Ctrl + / - / 0</span>
+        </div>
+
+        <div class="grid grid-cols-3 gap-2 pt-0.5">
+          <button 
+            type="button" 
+            @click="emit('set-font-size', 'compact')"
+            class="h-9 px-3 rounded-xl text-xs font-bold border transition-all cursor-pointer flex items-center justify-center gap-1.5"
+            :class="currentFontSize === 'compact' ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'"
+          >
+            <span>紧凑</span>
+            <span class="text-[10px] opacity-75">14px</span>
+          </button>
+          <button 
+            type="button" 
+            @click="emit('set-font-size', 'normal')"
+            class="h-9 px-3 rounded-xl text-xs font-bold border transition-all cursor-pointer flex items-center justify-center gap-1.5"
+            :class="currentFontSize === 'normal' ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'"
+          >
+            <span>标准</span>
+            <span class="text-[10px] opacity-75">15px</span>
+          </button>
+          <button 
+            type="button" 
+            @click="emit('set-font-size', 'large')"
+            class="h-9 px-3 rounded-xl text-xs font-bold border transition-all cursor-pointer flex items-center justify-center gap-1.5"
+            :class="currentFontSize === 'large' ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'"
+          >
+            <span>大字</span>
+            <span class="text-[10px] opacity-75">17px</span>
+          </button>
+        </div>
+      </div>
+
       <!-- 本地系统字体配置 -->
       <div class="flex flex-col gap-2.5 p-4 rounded-2xl bg-slate-50 border border-slate-200/80 shadow-2xs">
         <div class="flex items-center justify-between">
@@ -191,6 +232,7 @@ const props = defineProps<{
   isImporting: boolean;
   isCleaningImages: boolean;
   isLocked: boolean;
+  currentFontSize?: string;
 }>();
 
 const emit = defineEmits<{
@@ -204,6 +246,7 @@ const emit = defineEmits<{
   (e: 'set-password', p1: string, p2: string): void;
   (e: 'disable-password'): void;
   (e: 'lock-now'): void;
+  (e: 'set-font-size', size: 'compact' | 'normal' | 'large'): void;
 }>();
 
 const fontSearch = ref('');

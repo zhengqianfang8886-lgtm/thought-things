@@ -15,6 +15,7 @@ import TiptapEditor from "./components/TiptapEditor.vue";
 import ImageLightboxModal from "./components/modals/ImageLightboxModal.vue";
 import TagManagerModal from "./components/modals/TagManagerModal.vue";
 import TagTrendsView from "./components/TagTrendsView.vue";
+import { useDuplicateDetector } from "./composables/useDuplicateDetector";
 
 
 import type { Thought, QuoteDetail, AppLog, BacklinkItem } from "./types";
@@ -56,6 +57,13 @@ const quotes = knowledgeBase.allQuotes;
 const totalQuotesCount = knowledgeBase.totalQuotesCount;
 // 全库真实总数，独立于任何筛选/分页状态，专供界面数字展示使用（见 loadData 内的刷新逻辑）
 const libraryTotalCount = ref<number>(0);
+const entryTypeCounts = ref<{
+  total: number;
+  quote: number;
+  insight: number;
+  question: number;
+  has_thought: number;
+}>({ total: 0, quote: 0, insight: 0, question: 0, has_thought: 0 });
 const currentTab = ref<"capture" | "archive" | "pinned" | "trends">("capture");
 const entryType = ref<0 | 1 | 2>(0); // 0: 客观摘录, 1: 待解之问, 2: 原生感悟
 const isEntryQuestion = computed(() => entryType.value === 1);
@@ -113,44 +121,9 @@ const securityEngine = useSecurity(
   showToast
 );
 
-// 综合过滤数据
+// 综合过滤数据：底层 SQLite (1ms) 作为唯一裁判全量精准裁决，前端直通展示，杜绝二次过滤误杀卡片
 const displayedQuotes = computed(() => {
-  // 1. 时间轴范围过滤
-  let baseList = timelineEngine.getFilteredQuotes(quotes.value);
-
-  // 2. 标签层级过滤 (支持父子标签包含)
-  if (tagsEngine.selectedTag.value) {
-    const selected = tagsEngine.normalizeTagName(tagsEngine.selectedTag.value);
-    baseList = baseList.filter((item) => {
-      const cardTags = (item.tags || []).map(tagsEngine.normalizeTagName);
-      return cardTags.some((t) => t === selected || t.startsWith(selected + "/"));
-    });
-  }
-
-  // 3. 全局搜索过滤
-  if (searchQuery.value.trim()) {
-    const q = searchQuery.value.trim().toLowerCase();
-    baseList = baseList.filter((item) => {
-      const matchContent = item.content && item.content.toLowerCase().includes(q);
-      const matchSource = item.source && item.source.toLowerCase().includes(q);
-      const matchThoughts = (item.thoughts || []).some((t) => t.content && t.content.toLowerCase().includes(q));
-      return matchContent || matchSource || matchThoughts;
-    });
-  }
-
-  // 4. 分类透镜智能过滤 (摘录 / 感悟 / 问题 / 深入思考)
-  if (selectedEntryTypeFilter.value === 'quote') {
-    return baseList.filter((q) => q.is_question === 0);
-  } else if (selectedEntryTypeFilter.value === 'insight') {
-    return baseList.filter((q) => q.is_question === 2);
-  } else if (selectedEntryTypeFilter.value === 'question') {
-    return baseList.filter((q) => q.is_question === 1);
-  } else if (selectedEntryTypeFilter.value === 'has_thought') {
-    // 核心激活：仅返回至少拥有一条思考年轮的手记
-    return baseList.filter((q) => q.thoughts && q.thoughts.length > 0);
-  }
-
-  return baseList;
+  return quotes.value;
 });
 
 // ----------------- 视口自适应虚拟滚动装配 -----------------
@@ -170,7 +143,7 @@ const handleArchiveScroll = (e: Event) => {
   const el = e.target as HTMLElement;
   if (el) {
     // 距底部 320px 时无缝静默预拉取下一页，实现永不间断的时光漫卷
-    if (el.scrollHeight - el.scrollTop - el.clientHeight < 320) {
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < 650) { // 提前半屏预拉取，无感顺滑
       loadMoreQuotes();
     }
   }
@@ -205,15 +178,47 @@ const togglePinCard = (cardId: string) => {
   localStorage.setItem(PINNED_STORAGE_KEY, JSON.stringify(pinnedQuoteIds.value));
 };
 
+// 常看专属案头保活池，不受主轴 40 条分页限制
+const pinnedCardsMap = ref<Record<string, QuoteDetail>>({});
+
+const loadMissingPinnedQuotes = async () => {
+  if (pinnedQuoteIds.value.length === 0) return;
+  const missingIds = pinnedQuoteIds.value.filter((id) => {
+    if (pinnedCardsMap.value[id]) return false;
+    const inMem = knowledgeBase.getQuote(id) || quotes.value.find((q) => q.id === id);
+    if (inMem) {
+      pinnedCardsMap.value[id] = inMem;
+      return false;
+    }
+    return true;
+  });
+
+  if (missingIds.length > 0) {
+    try {
+      const fetched = await Promise.all(
+        missingIds.map((id) => invoke<QuoteDetail | null>("get_quote_by_id", { quoteId: id }))
+      );
+      for (const card of fetched) {
+        if (card && card.id) {
+          pinnedCardsMap.value[card.id] = card;
+          richTextEngine.extractAndPreload(card.content);
+          for (const th of card.thoughts || []) {
+            richTextEngine.extractAndPreload(th.content);
+          }
+        }
+      }
+    } catch (err) {
+      console.error("加载置顶手记详情失败:", err);
+    }
+  }
+};
+
 const pinnedQuotesList = computed<QuoteDetail[]>(() => {
-  const lookup = quoteLinksEngine.quoteLookupMap.value;
   const result: QuoteDetail[] = [];
   for (const id of pinnedQuoteIds.value) {
-    if (lookup[id]) {
-      result.push(lookup[id]);
-    } else {
-      const found = quotes.value.find((q) => q.id === id);
-      if (found) result.push(found);
+    const card = knowledgeBase.getQuote(id) || quotes.value.find((q) => q.id === id) || pinnedCardsMap.value[id];
+    if (card) {
+      result.push(card);
     }
   }
   return result;
@@ -348,6 +353,22 @@ const copyQuoteSummary = async (card: QuoteDetail) => {
 const DRAFT_KEY_QUOTE = "tr_draft_quote";
 const DRAFT_KEY_SOURCE = "tr_draft_source";
 const DRAFT_KEY_THOUGHT = "tr_draft_thought";
+const CAPTURE_WIDTH_KEY = "tr_capture_width_mode";
+// 录入工作台宽度模式: standard (896px) | wide (1152px) | full (100%)
+const captureWidthMode = ref<"standard" | "wide" | "full">(
+  (localStorage.getItem(CAPTURE_WIDTH_KEY) as any) || "standard"
+);
+const cycleCaptureWidth = () => {
+  if (captureWidthMode.value === "standard") captureWidthMode.value = "wide";
+  else if (captureWidthMode.value === "wide") captureWidthMode.value = "full";
+  else captureWidthMode.value = "standard";
+  localStorage.setItem(CAPTURE_WIDTH_KEY, captureWidthMode.value);
+};
+const captureWidthClass = computed(() => {
+  if (captureWidthMode.value === "wide") return "max-w-6xl";
+  if (captureWidthMode.value === "full") return "max-w-full";
+  return "max-w-4xl";
+});
 const RECENT_SOURCES_KEY = "tr_recent_sources";
 
 const inputQuote = ref(localStorage.getItem(DRAFT_KEY_QUOTE) || "");
@@ -455,6 +476,67 @@ watch(inputQuote, (val) => localStorage.setItem(DRAFT_KEY_QUOTE, val));
 watch(inputSource, (val) => localStorage.setItem(DRAFT_KEY_SOURCE, val));
 watch(inputThought, (val) => localStorage.setItem(DRAFT_KEY_THOUGHT, val));
 
+// 核心自愈联动：分类/标签/时间轴/搜索词改变，自动防抖向 SQLite 极速拉取，绝不漏卡片
+watch([selectedEntryTypeFilter, () => tagsEngine.selectedTag.value, () => timelineEngine.selectedTimeRange.value], () => {
+  loadData(true);
+});
+
+// 监听搜索词输入与一键清空联动
+watch(searchQuery, (newVal) => {
+  if (debounceTimer) window.clearTimeout(debounceTimer);
+  debounceTimer = window.setTimeout(() => {
+    loadData(true);
+  }, 180);
+});
+
+// ----------------- 智能重复摘录感知与年轮融合 -----------------
+const duplicateDetector = useDuplicateDetector(inputQuote, quotes);
+
+// 一键将当下思考融合成历史手记的最新思维年轮
+const handleMergeToExistingRing = async (targetQuoteId: string) => {
+  const content = inputThought.value.trim() || "（重逢复读此句，记录此时心境）";
+  try {
+    const thoughtId = await invoke<string>("append_thought", {
+      quoteId: targetQuoteId,
+      content,
+    });
+
+    const now = Date.now();
+    knowledgeBase.appendThought(targetQuoteId, {
+      id: thoughtId || String(now),
+      quote_id: targetQuoteId,
+      content,
+      created_at: now,
+      updated_at: now,
+    });
+
+    // 清空录入台
+    inputQuote.value = "";
+    inputThought.value = "";
+    editor.value?.commands.clearContent();
+    thoughtEditor.value?.commands.clearContent();
+    localStorage.removeItem(DRAFT_KEY_QUOTE);
+    localStorage.removeItem(DRAFT_KEY_THOUGHT);
+    duplicateDetector.dismiss();
+
+    showToast("✨ 已成功融为历史手记的最新思维年轮！");
+    currentTab.value = "archive";
+    await nextTick();
+    quoteLinksEngine.jumpToQuote(targetQuoteId);
+  } catch (err: any) {
+    showToast("融合失败: " + (err?.message || err));
+  }
+};
+
+const handleJumpToExistingQuote = (targetQuoteId: string) => {
+  duplicateDetector.dismiss();
+  currentTab.value = "archive";
+  nextTick(() => {
+    quoteLinksEngine.jumpToQuote(targetQuoteId);
+  });
+};
+
+
 const recentSources = ref<string[]>([]);
 const loadRecentSources = () => {
   try {
@@ -525,7 +607,7 @@ const loadData = async (reset = true) => {
     nextCursor.value = null;
     hasMoreQuotes.value = true;
   }
-  if (!reset && (!hasMoreQuotes.value || isLoadingMore.value)) return;
+  if (!reset && !hasMoreQuotes.value) return; // 移除错误的 self-lock，恢复翻页穿透
   try {
     const queryTag = tagsEngine.selectedTag.value;
     const querySearch = searchQuery.value.trim() ? searchQuery.value.trim() : null;
@@ -542,25 +624,21 @@ const loadData = async (reset = true) => {
       entryType: selectedEntryTypeFilter.value === 'quote' ? 0
         : selectedEntryTypeFilter.value === 'insight' ? 2
         : selectedEntryTypeFilter.value === 'question' ? 1
-        : 'all',
+        : (selectedEntryTypeFilter.value === 'has_thought' ? 'has_thought' : 'all'),
     };
     if (timeRange) {
       params.startTs = timeRange.start;
       params.endTs = timeRange.end;
       params.timeScope = timelineEngine.timeFilterScope.value;
     }
-    if (needsFullFetch) {
-      params.all = true;
-    } else {
-      params.cursor = reset ? null : nextCursor.value;
-      params.limit = 40;
-    }
+    params.cursor = reset ? null : nextCursor.value;
+    params.limit = 40;
 
     // 与分页请求并发拉取"全库真实总数"与"时间轴统计"——两者都独立于当前筛选/
     // 分页状态查询全表，只在 reset（筛选条件变化/首次加载）时才需要刷新。
     const [res, grandTotal] = await Promise.all([
       invoke<any>("get_quotes", params),
-      reset ? invoke<number>("get_total_quotes_count") : Promise.resolve(null),
+      reset ? invoke<any>("get_entry_type_stats") : Promise.resolve(null),
       reset ? timelineEngine.loadTimelineStats() : Promise.resolve(null),
     ]);
 
@@ -569,12 +647,13 @@ const loadData = async (reset = true) => {
     const more = res.has_more !== undefined ? res.has_more : false;
     const total = res.total_count !== undefined ? res.total_count : items.length;
 
-    knowledgeBase.setQuotes(items, total, !reset && !needsFullFetch);
+    knowledgeBase.setQuotes(items, total, !reset); // 正确追加下一页历史手记
 
     nextCursor.value = needsFullFetch ? null : cursor;
     hasMoreQuotes.value = needsFullFetch ? false : more;
-    if (reset && grandTotal !== null) {
-      libraryTotalCount.value = grandTotal;
+    if (reset && grandTotal) {
+      entryTypeCounts.value = grandTotal;
+      libraryTotalCount.value = grandTotal.total || 0;
     }
     tagsEngine.tagStats.value = await invoke("get_tag_stats");
     richTextEngine.scanAllImages(items);
@@ -618,6 +697,9 @@ const hasActiveConstraints = computed(() => {
 const resetAllConstraints = () => {
   tagsEngine.selectedTag.value = null;
   timelineEngine.selectedTimeRange.value = null;
+  selectedEntryTypeFilter.value = 'all';
+  searchQuery.value = '';
+  loadData(true);
 };
 
 // ----------------- 年轮延伸与编辑 -----------------
@@ -815,6 +897,16 @@ const doDeleteThought = async (thoughtId: string) => {
       targetThought = JSON.parse(JSON.stringify(t));
       break;
     }
+  }
+
+  // 0. 彻底清理编辑态残留幽灵ID，防止死锁卡片
+  if (editingThoughtId.value === thoughtId) {
+    editingThoughtId.value = null;
+    editingThoughtText.value = "";
+  }
+  if (activeAppendQuoteId.value === thoughtId) {
+    activeAppendQuoteId.value = null;
+    appendThoughtContent.value = "";
   }
 
   // 1. 内存中 0ms 瞬间抹除
@@ -1187,6 +1279,20 @@ const insertQuoteRefLink = (quoteId: string) => {
 // 富文本点击代理
 const handleRichContainerClick = (e: MouseEvent) => {
   const target = e.target as HTMLElement;
+
+  // 🛡️ 核心防线 3：拦截文本中暗藏的网页 <a> 标签，杜绝日常阅读误触
+  const linkEl = target.closest("a") as HTMLAnchorElement | null;
+  if (linkEl && linkEl.href && !linkEl.closest(".quote-link-badge")) {
+    e.preventDefault();
+    e.stopPropagation();
+    // 必须按住 Ctrl / ⌘ 点击才被判定为“有意打开”，普通单击绝不打扰
+    if (e.ctrlKey || e.metaKey) {
+      invoke("open_external_url", { url: linkEl.href });
+    } else {
+      showToast("🔗 外部链接：按住 " + modifierKey.value + " + 点击可在浏览器中打开");
+    }
+    return;
+  }
   const quoteBadge = target.closest(".quote-link-badge") as HTMLElement | null;
   if (quoteBadge) {
     e.stopPropagation();
@@ -1331,8 +1437,22 @@ const applyFontFamily = (family: string) => {
 const currentTheme = ref(localStorage.getItem("tr_theme") || "tulip");
 const currentFontSize = ref(localStorage.getItem("tr_font_size") || "normal");
 
+const setGlobalFontSize = (size: 'compact' | 'normal' | 'large') => {
+  currentFontSize.value = size;
+  applySettings();
+  // 联动虚拟滚动引擎重新计算预估高度，杜绝滚动错位
+  const heightMap: Record<string, number> = { compact: 230, normal: 260, large: 300 };
+  virtualScrollEngine.syncViewport();
+  showToast(`字体大小已切换为：${size === 'compact' ? '紧凑' : (size === 'large' ? '大字温润' : '标准')}`);
+};
+
 const applySettings = () => {
   document.documentElement.setAttribute("data-theme", currentTheme.value);
+  document.documentElement.setAttribute("data-font-size", currentFontSize.value);
+  const sizeMap: Record<string, string> = { compact: '14px', normal: '16px', large: '18px' };
+  document.documentElement.style.fontSize = sizeMap[currentFontSize.value] || '16px';
+  document.documentElement.setAttribute("data-font-size", currentFontSize.value);
+  document.documentElement.setAttribute("data-font-size", currentFontSize.value);
   localStorage.setItem("tr_theme", currentTheme.value);
   localStorage.setItem("tr_font_size", currentFontSize.value);
   if (currentFontFamily.value) {
@@ -1350,6 +1470,8 @@ watch(currentTab, (newTab) => {
         virtualScrollEngine.syncViewport();
       }
     });
+  } else if (newTab === 'pinned') {
+    loadMissingPinnedQuotes();
   }
 });
 
@@ -1471,6 +1593,23 @@ const handleGlobalKeyDown = (e: KeyboardEvent) => {
       }
     }
 
+    // 全局快捷键缩放字号：Ctrl + = 放大 / Ctrl + - 缩小 / Ctrl + 0 重置
+    if (e.key === "=" || e.key === "+") {
+      e.preventDefault();
+      if (currentFontSize.value === "compact") setGlobalFontSize("normal");
+      else if (currentFontSize.value === "normal") setGlobalFontSize("large");
+      return;
+    } else if (e.key === "-") {
+      e.preventDefault();
+      if (currentFontSize.value === "large") setGlobalFontSize("normal");
+      else if (currentFontSize.value === "normal") setGlobalFontSize("compact");
+      return;
+    } else if (e.key === "0") {
+      e.preventDefault();
+      setGlobalFontSize("normal");
+      return;
+    }
+
     if (e.key === "\\") {
       e.preventDefault();
       timelineEngine.toggleSidebar();
@@ -1491,6 +1630,7 @@ onMounted(async () => {
   loadRecentSources();
   scanLocalFonts();
   loadPinnedQuoteIds();
+  loadMissingPinnedQuotes();
 
   if (archiveContainerRef.value) {
     virtualScrollEngine.scrollContainerRef.value = archiveContainerRef.value;
@@ -1729,7 +1869,7 @@ const handleImportFileInputChange = (e: Event) => {
 <template>
   <div 
     class="h-full w-full flex flex-col overflow-hidden select-none bg-[#F4F6F3] text-[#0F172A] relative"
-    :class="currentFontSize === 'compact' ? 'text-sm' : (currentFontSize === 'large' ? 'text-lg' : 'text-base')"
+    
     style="font-family: var(--font-custom);"
   >
     <input ref="fileInputRef" type="file" accept="image/*" class="hidden" @change="handleFileInputChange" />
@@ -1878,8 +2018,8 @@ const handleImportFileInputChange = (e: Event) => {
       </div>
     </header>
 
-    <!-- 3. 主记录工作台 (单栏心流手记台 · 渐进式年轮萌发) -->
-    <section v-if="currentTab === 'capture'" class="flex-1 min-h-0 w-full px-4 sm:px-6 py-3 sm:py-4 overflow-hidden flex flex-col max-w-4xl mx-auto">
+        <!-- 3. 主记录工作台 (单栏心流手记台 · 渐进式年轮萌发) -->
+    <section v-if="currentTab === 'capture'" class="animate-tab-enter flex-1 min-h-0 w-full px-4 sm:px-6 py-3 sm:py-4 overflow-hidden flex flex-col mx-auto transition-all duration-200" :class="captureWidthClass">
       <div class="flex-1 min-h-0 w-full flex flex-col rounded-3xl bg-white border border-emerald-950/[0.08] shadow-sm overflow-hidden focus-within:border-emerald-500/80 focus-within:ring-2 focus-within:ring-emerald-400/20 transition-all">
         
         <!-- 1. 模式选择与快捷操作栏 -->
@@ -1914,6 +2054,16 @@ const handleImportFileInputChange = (e: Event) => {
 
           <!-- 右侧轻量存图与粘贴 -->
           <div class="flex items-center gap-1.5">
+            <!-- 录入台宽度调节按钮 -->
+            <button 
+              type="button"
+              @click="cycleCaptureWidth"
+              :title="`切换画布宽度: 当前【${captureWidthMode === 'standard' ? '标准' : (captureWidthMode === 'wide' ? '加宽' : '全宽')}】，点击切换`"
+              class="px-2.5 py-1 rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-semibold flex items-center gap-1 transition active:scale-95 cursor-pointer shadow-2xs select-none"
+            >
+              <span class="text-xs">⤢</span>
+              <span>{{ captureWidthMode === 'standard' ? '标准宽' : (captureWidthMode === 'wide' ? '加大宽' : '全屏宽') }}</span>
+            </button>
             <button 
               @click="triggerSelectImage"
               title="存入本地图片"
@@ -1943,11 +2093,11 @@ const handleImportFileInputChange = (e: Event) => {
           <button type="button" @click="editor?.chain().focus().toggleStrike().run()" title="删除线" class="w-6 h-6 rounded-md hover:bg-slate-200/70 text-xs line-through text-slate-700 flex items-center justify-center cursor-pointer">S</button>
           <span class="w-[1px] h-3.5 bg-slate-200 mx-0.5"></span>
 
-          <!-- 彩虹高亮荧光笔 -->
-          <button type="button" @click="editor?.chain().focus().toggleHighlight({ color: '#FEF08A' }).run()" title="荧光黄" class="w-3.5 h-3.5 rounded-full bg-amber-300 hover:scale-110 cursor-pointer shadow-2xs mx-0.5"></button>
-          <button type="button" @click="editor?.chain().focus().toggleHighlight({ color: '#A7F3D0' }).run()" title="青草绿" class="w-3.5 h-3.5 rounded-full bg-emerald-400 hover:scale-110 cursor-pointer shadow-2xs mx-0.5"></button>
-          <button type="button" @click="editor?.chain().focus().toggleHighlight({ color: '#BAE6FD' }).run()" title="晴空蓝" class="w-3.5 h-3.5 rounded-full bg-sky-400 hover:scale-110 cursor-pointer shadow-2xs mx-0.5"></button>
-          <button type="button" @click="editor?.chain().focus().toggleHighlight({ color: '#FDA4AF' }).run()" title="樱花粉" class="w-3.5 h-3.5 rounded-full bg-rose-300 hover:scale-110 cursor-pointer shadow-2xs mx-0.5"></button>
+          <!-- 出版级四色墨晕调色盘 -->
+          <button type="button" @click="editor?.chain().focus().toggleHighlight({ color: '#FEF3C7' }).run()" title="琥珀金 · 核心原句/顿悟" class="w-3.5 h-3.5 rounded-full bg-[#F59E0B] border border-white hover:scale-125 transition-transform cursor-pointer shadow-2xs mx-0.5"></button>
+          <button type="button" @click="editor?.chain().focus().toggleHighlight({ color: '#DCFCE7' }).run()" title="翡翠绿 · 关键结论/论据" class="w-3.5 h-3.5 rounded-full bg-[#10B981] border border-white hover:scale-125 transition-transform cursor-pointer shadow-2xs mx-0.5"></button>
+          <button type="button" @click="editor?.chain().focus().toggleHighlight({ color: '#E0F2FE' }).run()" title="晴空蓝 · 概念/逻辑脉络" class="w-3.5 h-3.5 rounded-full bg-[#0284C7] border border-white hover:scale-125 transition-transform cursor-pointer shadow-2xs mx-0.5"></button>
+          <button type="button" @click="editor?.chain().focus().toggleHighlight({ color: '#FFE4E6' }).run()" title="落樱粉 · 警惕/存疑反思" class="w-3.5 h-3.5 rounded-full bg-[#F43F5E] border border-white hover:scale-125 transition-transform cursor-pointer shadow-2xs mx-0.5"></button>
           <span class="w-[1px] h-3.5 bg-slate-200 mx-0.5"></span>
 
           <!-- 打勾清单 -->
@@ -1956,6 +2106,59 @@ const handleImportFileInputChange = (e: Event) => {
           </button>
           <button type="button" @click="editor?.chain().focus().toggleBlockquote().run()" title="引用块" class="w-6 h-6 rounded-md hover:bg-slate-200/70 text-xs text-slate-700 flex items-center justify-center cursor-pointer">❞</button>
         </div>
+
+        <!-- 智能重复检测与年轮融合横幅 -->
+        <Transition name="fade">
+          <div 
+            v-if="duplicateDetector.matchResult.value" 
+            class="shrink-0 mx-4 my-2 p-3 rounded-2xl bg-amber-50/90 border border-amber-300/80 shadow-2xs flex flex-col gap-2 animate-fade-in text-xs select-none"
+          >
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2 flex-wrap min-w-0">
+                <span class="text-amber-600 font-bold text-sm">⚡</span>
+                <span class="font-bold text-amber-950">
+                  {{ duplicateDetector.matchResult.value.type === 'exact' ? '完全一致的原句已在年轮中' : '发现高度重叠的历史手记' }}
+                </span>
+                <span class="px-2 py-0.5 rounded-full bg-amber-200/70 text-amber-900 font-mono text-[10.5px] font-bold">
+                  {{ Math.max(0, Math.floor((Date.now() - duplicateDetector.matchResult.value.targetQuote.created_at) / 86400000)) }} 天前收录
+                </span>
+                <span v-if="duplicateDetector.matchResult.value.targetQuote.source" class="font-serif italic text-amber-800 truncate max-w-[200px]">
+                  —— 《{{ duplicateDetector.matchResult.value.targetQuote.source }}》
+                </span>
+              </div>
+
+              <button 
+                type="button" 
+                @click="duplicateDetector.dismiss()" 
+                class="text-amber-800/60 hover:text-amber-950 font-bold cursor-pointer px-1"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div class="flex items-center justify-between pt-1 border-t border-amber-200/60 flex-wrap gap-2">
+              <span class="text-[11px] text-amber-800">
+                {{ inputThought.trim() ? '检测到你已写有当下思考，可直接生长为该手记的新年轮：' : '此句已在库中，可直接定位查看或追加思考：' }}
+              </span>
+              <div class="flex items-center gap-2">
+                <button 
+                  type="button" 
+                  @click="handleMergeToExistingRing(duplicateDetector.matchResult.value.targetQuote.id)" 
+                  class="px-3.5 py-1 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-bold shadow-xs hover:from-emerald-500 hover:to-teal-500 cursor-pointer transition active:scale-95 text-xs flex items-center gap-1.5"
+                >
+                  <span>🌱 一键融合为新一年轮</span>
+                </button>
+                <button 
+                  type="button" 
+                  @click="handleJumpToExistingQuote(duplicateDetector.matchResult.value.targetQuote.id)" 
+                  class="px-2.5 py-1 rounded-xl bg-white border border-amber-300 hover:bg-amber-100 text-amber-900 font-semibold cursor-pointer transition text-xs"
+                >
+                  定位旧卡片 ➔
+                </button>
+              </div>
+            </div>
+          </div>
+        </Transition>
 
         <!-- 3. 主画布书写区 (宽广通透的心流视野) -->
         <div class="flex-1 min-h-0 relative p-5 sm:p-6 bg-white overflow-y-auto stable-scroll">
@@ -1966,7 +2169,7 @@ const handleImportFileInputChange = (e: Event) => {
         </div>
 
         <!-- 4. 出处背景输入行（高质感典雅输入槽） -->
-        <div class="shrink-0 px-5 py-2.5 bg-gradient-to-b from-[#FAFBF9] to-[#F4F6F3]/60 border-t border-emerald-950/[0.06] flex items-center gap-3">
+        <div class="shrink-0 px-5 py-2.5 bg-gradient-to-b from-[#FAFBF9] to-[#F4F6F3]/60 border-t border-emerald-950/[0.06] flex items-center">
           <div class="flex-1 flex items-center gap-2.5 px-3 py-1.5 rounded-2xl bg-white border border-slate-200/90 hover:border-emerald-300 focus-within:border-emerald-500 focus-within:ring-2 focus-within:ring-emerald-400/20 shadow-2xs transition-all duration-150 group">
             <!-- 动态三态徽章 -->
             <span 
@@ -2002,21 +2205,7 @@ const handleImportFileInputChange = (e: Event) => {
             >✕</button>
           </div>
 
-          <!-- 右侧最近出处快捷胶囊池 -->
-          <div v-if="recentSources.length > 0 && !inputSource" class="hidden md:flex items-center gap-1.5 shrink-0">
-            <span class="text-[10px] text-slate-400 font-mono">历史:</span>
-            <button 
-              v-for="s in recentSources.slice(0, 3)" 
-              :key="s"
-              type="button"
-              @click="inputSource = s"
-              class="text-[11px] px-2.5 py-1 rounded-xl bg-white hover:bg-emerald-50 hover:text-emerald-900 hover:border-emerald-300 text-slate-600 transition-all cursor-pointer border border-slate-200 shadow-2xs truncate max-w-[125px] active:scale-95"
-              :title="s"
-            >
-              {{ s }}
-            </button>
           </div>
-        </div>
 
         <!-- 5. 渐进式年轮萌发槽 (默认收起为一个雅致的微胶囊，点击平滑展开) -->
         <div class="shrink-0 px-5 py-2 bg-[#F8FAF7] border-t border-emerald-950/[0.05] flex flex-col gap-2">
@@ -2077,7 +2266,7 @@ const handleImportFileInputChange = (e: Event) => {
             </button>
 
             <!-- 已挂载标签胶囊流与即时输入框 -->
-            <div class="flex-1 min-h-[34px] px-2.5 py-0.5 rounded-xl border border-slate-200/80 bg-slate-50/70 flex flex-wrap items-center gap-1.5 focus-within:bg-white focus-within:border-emerald-500 transition-all">
+            <div class="flex-1 min-h-[38px] max-h-[88px] overflow-y-auto stable-scroll px-3 py-1 rounded-2xl border border-slate-200/80 bg-slate-50/70 flex flex-wrap items-center gap-1.5 focus-within:bg-white focus-within:border-emerald-500 transition-all">
               <span 
                 v-for="(tag, idx) in tagsEngine.attachedTags.value" 
                 :key="tag"
@@ -2089,20 +2278,20 @@ const handleImportFileInputChange = (e: Event) => {
                 <button @click="tagsEngine.removeAttachedTag(idx)" class="opacity-50 hover:opacity-100 cursor-pointer ml-0.5">×</button>
               </span>
 
-              <div class="relative flex-1 min-w-[100px] flex items-center">
+              <div class="relative flex-1 min-w-[140px] flex items-center">
                 <input 
                   type="text"
                   v-model="tagsEngine.tagInputText.value"
                   @keydown="tagsEngine.handleTagInputKeydown" 
                   @blur="tagsEngine.pushTag(tagsEngine.tagInputText.value)"
-                  placeholder="贴标签..." 
+                  placeholder="输入标签名，按回车或逗号贴上..." 
                   class="bg-transparent text-xs w-full focus:outline-none text-[#0F172A] placeholder-[#94A3B8]"
                 />
 
                 <!-- 联想提示框 -->
                 <div 
                   v-if="tagsEngine.tagSuggestions.value.length > 0"
-                  class="absolute left-0 bottom-full mb-2 w-56 p-1.5 rounded-2xl bg-white border border-emerald-950/[0.12] shadow-xl z-50 flex flex-col gap-0.5"
+                  class="absolute left-0 bottom-full mb-2 min-w-[280px] max-w-md p-1.5 rounded-2xl bg-white border border-emerald-950/[0.12] shadow-xl z-50 flex flex-col gap-0.5"
                   @mousedown.prevent
                 >
                   <button
@@ -2119,21 +2308,7 @@ const handleImportFileInputChange = (e: Event) => {
               </div>
             </div>
 
-            <!-- 常用标签前 3 个快捷点选 -->
-            <div v-if="tagsEngine.frequentTags.value.length > 0" class="hidden lg:flex items-center gap-1 shrink-0">
-              <button 
-                v-for="ft in tagsEngine.frequentTags.value.slice(0, 3)"
-                :key="ft"
-                @click="tagsEngine.toggleAttachTag(ft)"
-                class="text-[10.5px] px-2 py-1 rounded-lg border transition cursor-pointer font-medium max-w-[90px] truncate"
-                :style="tagsEngine.attachedTags.value.includes(ft)
-                  ? { backgroundColor: tagsEngine.getTagColor(ft).bg, borderColor: tagsEngine.getTagColor(ft).border, color: tagsEngine.getTagColor(ft).text }
-                  : { backgroundColor: '#F8FAFC', borderColor: 'rgba(15,23,42,0.08)', color: '#64748B' }"
-              >
-                {{ tagsEngine.attachedTags.value.includes(ft) ? '✓' : '+' }} {{ tagsEngine.formatHierarchyTagName(ft) }}
-              </button>
             </div>
-          </div>
 
           <!-- 保存提交大按钮 (与左侧编辑完全连贯) -->
           <button 
@@ -2152,7 +2327,7 @@ const handleImportFileInputChange = (e: Event) => {
     </section>
 
     <!-- 4. 过往年轮流视图 (水滴晶亮时间轴 - 纯净独占) -->
-    <div v-else-if="currentTab === 'archive'" class="flex-1 min-h-0 w-full px-6 sm:px-8 py-4 sm:py-5 flex overflow-hidden max-w-7xl mx-auto">
+    <div v-else-if="currentTab === 'archive'" class="animate-tab-enter flex-1 min-h-0 w-full px-6 sm:px-8 py-4 sm:py-5 flex overflow-hidden max-w-7xl mx-auto">
       <Transition name="sidebar-dock">
         <div v-if="timelineEngine.isSidebarOpen.value" class="w-68 mr-5 h-full shrink-0 overflow-hidden">
           <aside class="w-[17rem] h-full flex flex-col bg-white rounded-3xl p-5 border border-emerald-950/[0.08] shadow-sm overflow-hidden select-none">
@@ -2407,11 +2582,12 @@ const handleImportFileInputChange = (e: Event) => {
             </button>
 
             <!-- 搜索框 (随打随搜，左带放大镜，右带一键清空) -->
-            <div class="relative flex-1 flex items-center min-w-[180px]">
+            <div class="relative flex-1 flex items-center min-w-[110px]">
               <span class="absolute left-3.5 text-xs text-slate-400 pointer-events-none">🔍</span>
               <input 
                 type="text" 
                 v-model="searchQuery" 
+                @input="handleSearchInput" 
                 placeholder="搜索原句、思考年轮、出处..." 
                 class="w-full text-xs sm:text-sm pl-9 pr-8 py-2 rounded-2xl border border-emerald-950/[0.08] bg-white text-[#0F172A] placeholder:text-slate-400 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-400/20 transition-all shadow-2xs"
               />
@@ -2426,57 +2602,97 @@ const handleImportFileInputChange = (e: Event) => {
               </button>
             </div>
 
-            <!-- 分类分段选择器 (高阶微光分段，绝不与下层复读) -->
-            <div class="flex items-center p-1 rounded-2xl bg-white border border-emerald-950/[0.08] shadow-2xs shrink-0">
+            <!-- 分类分段选择器 (雅致微光数字，自然融入，绝不刺目) -->
+            <div class="flex items-center p-1 rounded-2xl bg-white border border-emerald-950/[0.08] shadow-2xs shrink-0 select-none">
+              <!-- 全部 (告别刺眼纯黑，改用素雅温润的柔石灰) -->
               <button 
                 type="button" 
                 @click="selectedEntryTypeFilter = 'all'"
-                class="px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer"
-                :class="selectedEntryTypeFilter === 'all' ? 'bg-slate-900 text-white shadow-2xs' : 'text-slate-500 hover:text-slate-900'"
+                class="group px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
+                :class="selectedEntryTypeFilter === 'all' ? 'bg-slate-200/90 text-slate-800 shadow-2xs' : 'text-slate-500 hover:text-slate-800'"
               >
-                全部
+                <span>全部</span>
+                <span 
+                  class="text-[10px] font-mono tabular-nums "
+                  :class="selectedEntryTypeFilter === 'all' ? 'opacity-60' : 'opacity-50'"
+                >
+                  {{ entryTypeCounts.total }}
+                </span>
               </button>
+
+              <!-- 摘录 -->
               <button 
                 type="button" 
                 @click="selectedEntryTypeFilter = 'quote'"
-                class="px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1"
+                class="group px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
                 :class="selectedEntryTypeFilter === 'quote' ? 'bg-emerald-100 text-emerald-900 shadow-2xs' : 'text-slate-500 hover:text-slate-900'"
               >
-                <span>📖</span><span>摘录</span>
+                <span class="flex items-center gap-1"><span>📖</span><span>摘录</span></span>
+                <span 
+                  class="text-[10px] font-mono tabular-nums "
+                  :class="selectedEntryTypeFilter === 'quote' ? 'bg-emerald-200/80 text-emerald-800 font-bold' : 'opacity-50'"
+                >
+                  {{ entryTypeCounts.quote }}
+                </span>
               </button>
+
+              <!-- 感悟 -->
               <button 
                 type="button" 
                 @click="selectedEntryTypeFilter = 'insight'"
-                class="px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1"
+                class="group px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
                 :class="selectedEntryTypeFilter === 'insight' ? 'bg-indigo-100 text-indigo-900 shadow-2xs' : 'text-slate-500 hover:text-slate-900'"
               >
-                <span>💡</span><span>感悟</span>
+                <span class="flex items-center gap-1"><span>💡</span><span>感悟</span></span>
+                <span 
+                  class="text-[10px] font-mono tabular-nums "
+                  :class="selectedEntryTypeFilter === 'insight' ? 'bg-indigo-200/80 text-indigo-800 font-bold' : 'opacity-50'"
+                >
+                  {{ entryTypeCounts.insight }}
+                </span>
               </button>
+
+              <!-- 问题 -->
               <button 
                 type="button" 
                 @click="selectedEntryTypeFilter = 'question'"
-                class="px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1"
+                class="group px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
                 :class="selectedEntryTypeFilter === 'question' ? 'bg-amber-100 text-amber-900 shadow-2xs' : 'text-slate-500 hover:text-slate-900'"
               >
-                <span>❓</span><span>问题</span>
+                <span class="flex items-center gap-1"><span>❓</span><span>问题</span></span>
+                <span 
+                  class="text-[10px] font-mono tabular-nums "
+                  :class="selectedEntryTypeFilter === 'question' ? 'bg-amber-200/80 text-amber-800 font-bold' : 'opacity-50'"
+                >
+                  {{ entryTypeCounts.question }}
+                </span>
               </button>
+
+              <!-- 深入思考 (柔和薄荷青，不抢眼) -->
               <button 
                 type="button" 
                 @click="selectedEntryTypeFilter = 'has_thought'"
-                class="px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1"
-                :class="selectedEntryTypeFilter === 'has_thought' ? 'bg-emerald-700 text-white shadow-2xs font-extrabold' : 'text-slate-500 hover:text-slate-900'"
-                title="只看已有思维年轮/延伸认知的深度手记"
+                class="group px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
+                :class="selectedEntryTypeFilter === 'has_thought' ? 'bg-teal-100 text-teal-900 shadow-2xs' : 'text-slate-500 hover:text-slate-900'"
+                title="已附带有思维年轮演进的手记"
               >
-                <span>🌱</span><span>深入思考</span>
+                <span class="flex items-center gap-1"><span>🌱</span><span>思考</span></span>
+                <span 
+                  class="text-[10px] font-mono tabular-nums "
+                  :class="selectedEntryTypeFilter === 'has_thought' ? 'bg-teal-200/80 text-teal-800 font-bold' : 'opacity-50'"
+                >
+                  {{ entryTypeCounts.has_thought }}
+                </span>
               </button>
             </div>
           </div>
 
-          <!-- 下层辅助约束条 (仅在选择了标签或时间等额外约束时平滑展示) -->
-          <div 
-            v-if="hasActiveConstraints" 
-            class="flex items-center justify-between px-3 py-1.5 rounded-xl bg-slate-100/70 border border-slate-200/50 text-xs text-slate-600 animate-fade-in"
-          >
+          <!-- 下层辅助约束条 (柔顺伸展折叠) -->
+          <Transition name="filter-strip">
+            <div 
+              v-if="hasActiveConstraints" 
+              class="flex items-center justify-between px-3 py-1.5 rounded-xl bg-slate-100/70 border border-slate-200/50 text-xs text-slate-600"
+            >
             <div class="flex items-center gap-2 flex-wrap min-w-0">
               <span class="text-[11px] font-bold text-slate-400 font-mono">叠加条件:</span>
 
@@ -2487,7 +2703,7 @@ const handleImportFileInputChange = (e: Event) => {
                 :style="{ backgroundColor: tagsEngine.getTagColor(tagsEngine.selectedTag.value).bg, borderColor: tagsEngine.getTagColor(tagsEngine.selectedTag.value).border, color: tagsEngine.getTagColor(tagsEngine.selectedTag.value).text }"
               >
                 <span>🏷️</span>
-                <span class="truncate max-w-[140px]">#{{ tagsEngine.formatHierarchyTagName(tagsEngine.selectedTag.value) }}</span>
+                <span class="whitespace-nowrap font-medium">#{{ tagsEngine.formatHierarchyTagName(tagsEngine.selectedTag.value) }}</span>
                 <button @click="tagsEngine.selectedTag.value = null" title="移除该标签约束" class="opacity-50 hover:opacity-100 font-bold ml-0.5 cursor-pointer">✕</button>
               </span>
 
@@ -2515,6 +2731,7 @@ const handleImportFileInputChange = (e: Event) => {
               清空附加过滤 ✕
             </button>
           </div>
+          </Transition>
         </div>
 
         <div 
@@ -2744,12 +2961,13 @@ const handleImportFileInputChange = (e: Event) => {
                 </button>
               </div>
 
-              <!-- 知识脉络回响高密度流式面板 (极简原木活页设计，消除所有负面标签) -->
-              <div 
-                v-if="expandedBacklinkCardIds[card.id]"
-                class="my-2 p-3.5 rounded-2xl bg-[#F8FAF7] border border-emerald-950/[0.07] shadow-inner flex flex-col gap-2.5 animate-fade-in"
-                @click.stop
-              >
+              <!-- 知识脉络回响高密度流式面板 (自然展开动效) -->
+              <Transition name="accordion-drop">
+                <div 
+                  v-if="expandedBacklinkCardIds[card.id]"
+                  class="my-2 p-3.5 rounded-2xl bg-[#F8FAF7] border border-emerald-950/[0.07] shadow-inner flex flex-col gap-2.5"
+                  @click.stop
+                >
                 <!-- 优雅顶栏 -->
                 <div class="flex items-center justify-between text-xs pb-2 border-b border-emerald-950/[0.05]">
                   <div class="flex items-center gap-2">
@@ -2807,6 +3025,7 @@ const handleImportFileInputChange = (e: Event) => {
                   </div>
                 </div>
               </div>
+              </Transition>
 
               <!-- 灵动年轮思考节点区 -->
               <div class="pt-4 border-t border-slate-100 flex flex-col gap-3.5">
@@ -2980,12 +3199,24 @@ const handleImportFileInputChange = (e: Event) => {
             v-if="virtualScrollEngine.virtualState.value.isVirtualized && virtualScrollEngine.virtualState.value.bottomSpacer > 0"
             :style="{ height: virtualScrollEngine.virtualState.value.bottomSpacer + 'px', flexShrink: 0 }"
           ></div>
+
+          <!-- 底部加载与完卷仪式感指示条 -->
+          <div class="py-10 flex flex-col items-center justify-center text-xs font-mono text-slate-400 select-none">
+            <div v-if="isLoadingMore" class="flex items-center gap-2 text-emerald-800 animate-pulse font-bold">
+              <span>🌱</span>
+              <span>正在展开更早的时光年轮...</span>
+            </div>
+            <div v-else-if="!hasMoreQuotes && quotes.length > 0" class="flex items-center gap-2 opacity-60">
+              <span>🌲</span>
+              <span>已漫卷至最初初芯 · 共 {{ quotes.length }} 篇</span>
+            </div>
+          </div>
         </div>
       </main>
     </div>
 
     <!-- 4.2 常看聚焦看板 (纯净独占) -->
-    <div v-else-if="currentTab === 'pinned'" class="flex-1 min-h-0 w-full px-6 sm:px-8 py-4 sm:py-5 flex flex-col overflow-hidden max-w-7xl mx-auto">
+    <div v-else-if="currentTab === 'pinned'" class="animate-tab-enter flex-1 min-h-0 w-full px-6 sm:px-8 py-4 sm:py-5 flex flex-col overflow-hidden max-w-7xl mx-auto">
       <div class="shrink-0 flex items-center justify-between pb-3 mb-4 border-b border-slate-200">
         <div class="flex items-center gap-2.5">
           <span class="w-2.5 h-2.5 rounded-full bg-amber-500 shadow-2xs animate-pulse"></span>
@@ -3090,7 +3321,7 @@ const handleImportFileInputChange = (e: Event) => {
 
         <!-- 4.3 认知脉动与激增看板 (纯净独占) -->
     <TagTrendsView 
-      v-else-if="currentTab === 'trends'"
+      v-else-if="currentTab === 'trends'" key="tab-trends"
       :quotes="quotes"
       :get-tag-dot-color="(name) => tagsEngine.getTagColor(name).dot"
       @jump-to-quote="(id) => { currentTab = 'archive'; quoteLinksEngine.jumpToQuote(id); }"
@@ -3516,16 +3747,18 @@ const handleImportFileInputChange = (e: Event) => {
                   :key="t.id"
                   type="button"
                   @click.stop="tagsEngine.handleSelectTagFromPicker(t.name)"
-                  class="h-8 px-3.5 rounded-full border text-xs inline-flex items-center gap-2 cursor-pointer shadow-2xs select-none transition-colors duration-100 shrink-0"
+                  :title="tagsEngine.formatHierarchyTagName(t.name)"
+                  class="min-h-[32px] py-1.5 px-3.5 rounded-full border text-xs inline-flex items-center gap-2 cursor-pointer shadow-2xs select-none transition-colors duration-100 shrink-0 whitespace-nowrap"
                   :style="tagsEngine.isTagSelectedInPicker(t.name) 
                     ? { backgroundColor: tagsEngine.getTagColor(t.name).bg, borderColor: tagsEngine.getTagColor(t.name).border, color: tagsEngine.getTagColor(t.name).text, fontWeight: 600 } 
                     : { backgroundColor: '#F8FAFC', borderColor: 'rgba(15,23,42,0.12)', color: '#475569', fontWeight: 500 }"
                 >
-                  <span class="truncate max-w-[170px] pointer-events-none">{{ tagsEngine.formatHierarchyTagName(t.name) }}</span>
+                  <!-- 完整显示标签全名与层级路径，绝不截断 -->
+                  <span class="pointer-events-none font-medium leading-relaxed">{{ tagsEngine.formatHierarchyTagName(t.name) }}</span>
                   
-                  <!-- 雅致的翡翠小圆对勾徽章 (未选中时定宽透明，尺寸 1px 不变，绝不跳动) -->
+                  <!-- 雅致的翡翠小圆对勾徽章 -->
                   <span 
-                    class="w-4 h-4 rounded-full inline-flex items-center justify-center text-[10px] font-bold transition-all duration-150 pointer-events-none"
+                    class="w-4 h-4 rounded-full inline-flex items-center justify-center text-[10px] font-bold transition-all duration-150 pointer-events-none shrink-0"
                     :class="tagsEngine.isTagSelectedInPicker(t.name) ? 'bg-emerald-600 text-white shadow-2xs' : 'opacity-0 scale-75'"
                   >
                     ✓
@@ -3722,6 +3955,47 @@ const handleImportFileInputChange = (e: Event) => {
             >
               ✕
             </button>
+          </div>
+
+          <!-- 全局阅读字号调节 -->
+          <div class="flex flex-col gap-2.5 p-4 rounded-2xl bg-slate-50 border border-slate-200/80 shadow-2xs">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                <span>🔍</span>
+                <span>手记阅读字号</span>
+              </span>
+              <span class="text-[10px] text-slate-400 font-mono">支持快捷键 Ctrl + / - / 0</span>
+            </div>
+
+            <div class="grid grid-cols-3 gap-2 pt-0.5">
+              <button 
+                type="button" 
+                @click="setGlobalFontSize('compact')"
+                class="h-9 px-3 rounded-xl text-xs font-bold border transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                :class="currentFontSize === 'compact' ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'"
+              >
+                <span>紧凑</span>
+                <span class="text-[10px] opacity-75">14px</span>
+              </button>
+              <button 
+                type="button" 
+                @click="setGlobalFontSize('normal')"
+                class="h-9 px-3 rounded-xl text-xs font-bold border transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                :class="currentFontSize === 'normal' ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'"
+              >
+                <span>标准</span>
+                <span class="text-[10px] opacity-75">15px</span>
+              </button>
+              <button 
+                type="button" 
+                @click="setGlobalFontSize('large')"
+                class="h-9 px-3 rounded-xl text-xs font-bold border transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                :class="currentFontSize === 'large' ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'"
+              >
+                <span>大字</span>
+                <span class="text-[10px] opacity-75">17px</span>
+              </button>
+            </div>
           </div>
 
           <!-- 本地系统字体配置 (shrink-0 h-8 彻底杜绝压扁) -->
