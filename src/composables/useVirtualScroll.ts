@@ -12,8 +12,8 @@ export interface VirtualScrollOptions<T> {
 export function useVirtualScroll<T>(options: VirtualScrollOptions<T>) {
   const {
     items,
-    estimatedItemHeight = 220,
-    itemGap = 24, // 对应 Tailwind gap-6 = 24px
+    estimatedItemHeight = 135,
+    itemGap = 10, // 对应 Tailwind gap-3.5 = 14px
     bufferCount = 8,
     virtualThreshold = 60,
     keyGetter,
@@ -49,7 +49,9 @@ export function useVirtualScroll<T>(options: VirtualScrollOptions<T>) {
         const key = target.getAttribute("data-virtual-key");
         if (key) {
           const h = Math.round(target.offsetHeight);
-          if (h > 0 && measuredHeights.get(key) !== h) {
+          const oldH = measuredHeights.get(key) || 0;
+          // 核心优化：高频微小抖动(<=2px)直接忽略，严禁触发全局前缀和重算死循环！
+          if (h > 0 && Math.abs(oldH - h) > 2) {
             measuredHeights.set(key, h);
             changed = true;
           }
@@ -205,14 +207,18 @@ export function useVirtualScroll<T>(options: VirtualScrollOptions<T>) {
     };
   });
 
+  let scrollRafId: number | null = null;
   const onScroll = (e?: Event) => {
     const el = (e?.target as HTMLElement) || scrollContainerRef.value;
-    if (el) {
+    if (!el) return;
+    if (scrollRafId !== null) return;
+    scrollRafId = requestAnimationFrame(() => {
+      scrollRafId = null;
       scrollTop.value = el.scrollTop;
       if (el.clientHeight > 0 && el.clientHeight !== viewportHeight.value) {
         viewportHeight.value = el.clientHeight;
       }
-    }
+    });
   };
 
   const registerItemElement = (key: string, el: HTMLElement | null) => {

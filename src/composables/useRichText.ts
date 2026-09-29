@@ -327,25 +327,28 @@ export function useRichText(showToast: (msg: string) => void) {
       return `<span class="quote-link-dangling inline-flex items-center gap-1 px-2 py-0.5 my-0.5 rounded-full text-[11px] font-sans bg-slate-100 text-slate-500 border border-dashed border-slate-300/80 select-none align-middle cursor-help" title="该关联原句已被删除，保留标题备查" data-dangling-id="${refQuoteId}"><span class="text-[10px] opacity-70">⛓️‍💥</span><span class="line-through decoration-slate-300">${fallbackTitle}</span><span class="text-[9.5px] opacity-75">(已删)</span></span>`;
     });
 
-    // 3. 解析图片嵌入
+    // 3. 解析图片嵌入 (平滑零跳变抗抖结构)
     output = output.replace(/!\[(.*?)\]\(img:([a-zA-Z0-9_\-\.]+)\)/g, (_m, alt, filename) => {
       const src = loadedImageMap.value[filename];
       if (src && src !== "ERROR") {
         touchLruKey(filename);
         return `
-          <div class="my-3 inline-flex max-w-full">
-            <div class="relative max-w-full inline-block rounded-2xl overflow-hidden border border-slate-200/90 shadow-sm bg-white cursor-zoom-in group hover:shadow-md transition preview-trigger" data-preview-img="${filename}">
-              <img src="${src}" alt="${alt}" loading="lazy" class="max-h-96 max-w-full w-auto h-auto object-contain block select-none rounded-2xl pointer-events-none" />
+          <div class="my-1 block max-w-full tr-img-wrapper" style="contain: layout paint;">
+            <div class="relative max-w-sm sm:max-w-md inline-flex rounded-xl overflow-hidden border border-slate-200/90 bg-slate-100/80 shadow-2xs hover:shadow-sm hover:border-emerald-400/80 cursor-zoom-in group preview-trigger align-top" data-preview-img="${filename}" title="点击查看高清大图">
+              <img src="${src}" alt="${alt}" loading="eager" decoding="async" class="max-h-48 w-auto max-w-full object-contain object-left block select-none rounded-xl pointer-events-none will-change-transform" style="content-visibility: auto;" onload="this.parentElement.style.backgroundColor='transparent';" />
+              <div class="absolute bottom-1.5 right-1.5 px-2 py-0.5 rounded-md bg-slate-900/65 text-white text-[10px] font-mono opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 backdrop-blur-xs pointer-events-none">
+                <span>🔍</span><span>特写</span>
+              </div>
             </div>
           </div>
         `;
       } else if (src === "ERROR") {
-        return `<span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-50 text-rose-600 border border-rose-200 text-xs font-mono my-1 font-semibold"><span>⚠️</span><span>图片丢失 (${filename})</span></span>`;
+        return `<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-rose-50 text-rose-600 border border-rose-200 text-xs font-mono my-1 font-semibold"><span>⚠️</span><span>图片丢失 (${filename})</span></span>`;
       } else {
         return `
-          <div class="my-2 block max-w-full">
-            <div class="w-60 h-32 rounded-2xl border border-dashed border-emerald-950/15 bg-slate-100/70 flex items-center justify-center gap-2 text-xs font-mono text-slate-500 animate-pulse select-none">
-              <span>🖼️</span><span>图片载入中...</span>
+          <div class="my-1 block max-w-full tr-img-wrapper" style="contain: layout paint;">
+            <div class="w-52 h-36 rounded-xl border border-dashed border-emerald-950/15 bg-slate-100/70 flex items-center justify-center gap-1.5 text-xs font-mono text-slate-400 select-none">
+              <span class="animate-pulse">🖼️</span><span>图片加载中...</span>
             </div>
           </div>
         `;

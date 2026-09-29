@@ -65,7 +65,62 @@ const entryTypeCounts = ref<{
   has_thought: number;
 }>({ total: 0, quote: 0, insight: 0, question: 0, has_thought: 0 });
 const currentTab = ref<"capture" | "archive" | "pinned" | "trends">("capture");
+
+// --- 苹果物理阻尼流体滑块动力学系统 (Apple Fluid Glider) ---
+const navTabRefs = ref<Record<string, HTMLElement | null>>({});
+const gliderStyle = ref({
+  transform: 'translate3d(0px, 0px, 0)',
+  width: '0px',
+  opacity: 0,
+});
+
+const updateGliderPosition = (tabKey: string, immediate = false) => {
+  nextTick(() => {
+    const targetEl = navTabRefs.value[tabKey];
+    if (targetEl) {
+      const left = targetEl.offsetLeft;
+      const width = targetEl.offsetWidth;
+      gliderStyle.value = {
+        transform: `translate3d(${left}px, 0px, 0)`,
+        width: `${width}px`,
+        opacity: 1,
+      };
+    }
+  });
+};
+
+watch(currentTab, (newTab) => {
+  updateGliderPosition(newTab);
+});
+
+const activePickerGroup = ref<string>('all');
 const entryType = ref<0 | 1 | 2>(0); // 0: 客观摘录, 1: 待解之问, 2: 原生感悟
+
+// --- 记录台模式分段器苹果流体滑块动力学系统 ---
+const entryTabRefs = ref<Record<number, HTMLElement | null>>({});
+const entryGliderStyle = ref({
+  transform: 'translate3d(0px, 0px, 0)',
+  width: '0px',
+  opacity: 0,
+});
+
+const updateEntryGliderPosition = (typeVal: number) => {
+  nextTick(() => {
+    const targetEl = entryTabRefs.value[typeVal];
+    if (targetEl) {
+      entryGliderStyle.value = {
+        transform: `translate3d(${targetEl.offsetLeft}px, 0px, 0)`,
+        width: `${targetEl.offsetWidth}px`,
+        opacity: 1,
+      };
+    }
+  });
+};
+
+watch(entryType, (newVal) => {
+  updateEntryGliderPosition(newVal);
+});
+
 const isEntryQuestion = computed(() => entryType.value === 1);
 const filterOnlyQuestions = ref(false);
 const selectedEntryTypeFilter = ref<'all' | 'quote' | 'insight' | 'question' | 'has_thought'>('all');
@@ -80,6 +135,29 @@ const isLoadingMore = ref(false);
 
 // ----------------- 领域子系统装配 -----------------
 const richTextEngine = useRichText(showToast);
+
+// --- 心理学前瞻意图预测：根据当前正文自动计算可能匹配的标签 ---
+const smartContextSuggestedTags = computed(() => {
+  const text = (inputQuote.value + ' ' + inputThought.value + ' ' + inputSource.value).toLowerCase();
+  const attached = new Set(tagsEngine.attachedTags.value.map(tagsEngine.normalizeTagName));
+  
+  // 1. 优先匹配正文中直接出现名称的标签
+  const textMatched: string[] = [];
+  for (const t of tagsEngine.tagStats.value) {
+    if (attached.has(t.name)) continue;
+    const leaf = tagsEngine.getLeafTagName(t.name).toLowerCase();
+    if (leaf.length >= 2 && text.includes(leaf)) {
+      textMatched.push(t.name);
+    }
+  }
+
+  // 2. 补充最常用的高频标签
+  const fallbackFrequent = tagsEngine.frequentTags.value.filter(name => !attached.has(name));
+  
+  // 合并取前 3 个最具可能性的锚点标签
+  const candidates = [...new Set([...textMatched, ...fallbackFrequent])].slice(0, 3);
+  return candidates;
+});
 
 const tagsEngine = useTags(
   quotes,
@@ -1321,6 +1399,7 @@ const handleRichContainerClick = (e: MouseEvent) => {
 
 // 偏好设置
 const isSettingsOpen = ref(false);
+const isMoreMenuOpen = ref(false);
 const systemFonts = ref<string[]>([]);
 const isScanningFonts = ref(false);
 const currentFontFamily = ref(localStorage.getItem("tr_font_family") || "system-ui");
@@ -1641,6 +1720,13 @@ onMounted(async () => {
   });
 
   window.addEventListener("keydown", handleGlobalKeyDown);
+  // 初始化苹果导航滑块物理位置
+  nextTick(() => {
+    updateGliderPosition(currentTab.value, true);
+    updateEntryGliderPosition(entryType.value);
+
+  });
+
 });
 
 // ----------------- 灵感漫游与年轮闪回 -----------------
@@ -1927,90 +2013,146 @@ const handleImportFileInputChange = (e: Event) => {
         </div>
       </div>
 
-      <!-- 中间：核心胶囊导航 (强制单行不折叠，紧凑呼吸感) -->
-      <nav class="flex items-center p-1 rounded-full border border-emerald-950/[0.06] bg-slate-100/90 shadow-inner shrink-0">
+      <!-- 中间：苹果物理流体阻尼胶囊导航 (Apple Fluid Glider) -->
+      <nav 
+        class="relative flex items-center p-1 rounded-full border border-emerald-950/[0.08] bg-slate-200/55 shadow-[inset_0_1.5px_3px_rgba(0,0,0,0.06)] shrink-0 select-none isolate"
+      >
+        <!-- 核心物理实体小白块 (The Living Glider) -->
+        <div 
+          class="absolute top-1 bottom-1 left-0 rounded-full bg-white transition-all duration-300 pointer-events-none z-0"
+          :style="{
+            ...gliderStyle,
+            transitionTimingFunction: 'cubic-bezier(0.2, 0.95, 0.3, 1)',
+            boxShadow: '0 2px 8px -1px rgba(15, 35, 24, 0.12), 0 1px 3px rgba(0, 0, 0, 0.06), 0 0 0 0.5px rgba(0, 0, 0, 0.04)'
+          }"
+        ></div>
+
+        <!-- 1. 记录 Tab -->
         <button 
           type="button"
+          :ref="(el) => navTabRefs['capture'] = el as HTMLElement"
           @click="currentTab = 'capture'"
-          class="flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 rounded-full text-xs sm:text-sm font-bold transition-all cursor-pointer whitespace-nowrap shrink-0"
-          :class="currentTab === 'capture' ? 'bg-white text-emerald-900 shadow-2xs' : 'text-slate-500 hover:text-slate-900'"
+          class="relative z-10 flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 rounded-full text-xs sm:text-sm font-bold transition-transform duration-150 active:scale-92 cursor-pointer whitespace-nowrap shrink-0 group/tab"
+          :class="currentTab === 'capture' ? 'text-emerald-950 font-extrabold' : 'text-slate-500 hover:text-slate-800'"
         >
-          <span>✍️ 记录</span>
-          <span class="text-[10.5px] opacity-40 font-mono hidden min-[1020px]:inline">{{ modifierKey }}1</span>
+          <span class="transition-transform group-hover/tab:scale-110">✍️ 记录</span>
+          <span class="text-[10px] opacity-40 font-mono hidden min-[1020px]:inline">{{ modifierKey }}1</span>
         </button>
 
+        <!-- 2. 年轮 Tab -->
         <button 
           type="button"
+          :ref="(el) => navTabRefs['archive'] = el as HTMLElement"
           @click="currentTab = 'archive'"
-          class="flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 rounded-full text-xs sm:text-sm font-bold transition-all cursor-pointer whitespace-nowrap shrink-0"
-          :class="currentTab === 'archive' ? 'bg-white text-emerald-900 shadow-2xs' : 'text-slate-500 hover:text-slate-900'"
+          class="relative z-10 flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 rounded-full text-xs sm:text-sm font-bold transition-transform duration-150 active:scale-92 cursor-pointer whitespace-nowrap shrink-0 group/tab"
+          :class="currentTab === 'archive' ? 'text-emerald-950 font-extrabold' : 'text-slate-500 hover:text-slate-800'"
         >
-          <span>📜 年轮</span>
-          <span class="text-[10px] px-1.5 py-0.2 rounded-full font-bold bg-emerald-100 text-emerald-700 font-mono">
+          <span class="transition-transform group-hover/tab:scale-110">📜 年轮</span>
+          <span 
+            class="text-[10px] px-1.5 py-0.2 rounded-full font-bold font-mono transition-colors"
+            :class="currentTab === 'archive' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200/70 text-slate-500'"
+          >
             {{ libraryTotalCount }}
           </span>
           <span class="text-[10.5px] opacity-40 font-mono hidden min-[1020px]:inline">{{ modifierKey }}2</span>
         </button>
 
+        <!-- 3. 常看 Tab -->
         <button 
           type="button"
+          :ref="(el) => navTabRefs['pinned'] = el as HTMLElement"
           @click="currentTab = 'pinned'"
-          class="flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 rounded-full text-xs sm:text-sm font-bold transition-all cursor-pointer whitespace-nowrap shrink-0"
-          :class="currentTab === 'pinned' ? 'bg-white text-emerald-900 shadow-2xs' : 'text-slate-500 hover:text-slate-900'"
+          class="relative z-10 flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 rounded-full text-xs sm:text-sm font-bold transition-transform duration-150 active:scale-92 cursor-pointer whitespace-nowrap shrink-0 group/tab"
+          :class="currentTab === 'pinned' ? 'text-amber-950 font-extrabold' : 'text-slate-500 hover:text-slate-800'"
         >
-          <span>🌟 常看</span>
+          <span class="transition-transform group-hover/tab:scale-110">🌟 常看</span>
           <span 
             v-if="pinnedQuoteIds.length > 0"
-            class="text-[10px] px-1.5 py-0.2 rounded-full font-bold bg-amber-100 text-amber-800 font-mono"
+            class="text-[10px] px-1.5 py-0.2 rounded-full font-bold font-mono transition-colors"
+            :class="currentTab === 'pinned' ? 'bg-amber-100 text-amber-900 border border-amber-300/80 shadow-2xs' : 'bg-slate-200/70 text-slate-500'"
           >
             {{ pinnedQuoteIds.length }}
           </span>
           <span class="text-[10.5px] opacity-40 font-mono hidden min-[1020px]:inline">{{ modifierKey }}3</span>
         </button>
 
+        <!-- 4. 脉动 Tab -->
         <button 
           type="button"
+          :ref="(el) => navTabRefs['trends'] = el as HTMLElement"
           @click="currentTab = 'trends'"
-          class="flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 rounded-full text-xs sm:text-sm font-bold transition-all cursor-pointer whitespace-nowrap shrink-0"
-          :class="currentTab === 'trends' ? 'bg-white text-emerald-900 shadow-2xs' : 'text-slate-500 hover:text-slate-900'"
+          class="relative z-10 flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 rounded-full text-xs sm:text-sm font-bold transition-transform duration-150 active:scale-92 cursor-pointer whitespace-nowrap shrink-0 group/tab"
+          :class="currentTab === 'trends' ? 'text-emerald-950 font-extrabold' : 'text-slate-500 hover:text-slate-800'"
         >
-          <span>📈 脉动</span>
+          <span class="transition-transform group-hover/tab:scale-110">📈 脉动</span>
           <span class="text-[10.5px] opacity-40 font-mono hidden min-[1020px]:inline">{{ modifierKey }}4</span>
         </button>
       </nav>
 
-      <!-- 右侧：动作按钮组 (紧凑胶囊，图标与文字紧密协同) -->
+      <!-- 右侧：动作按钮组 (宽屏平铺 / <900px 自动收拢为“更多 ▾”，极致抗挤压) -->
       <div class="flex items-center gap-1.5 shrink-0 whitespace-nowrap">
-        <button 
-          type="button"
-          @click="isBackupModalOpen = true"
-          title="数据备份与资产安全中心"
-          class="px-2.5 sm:px-3 py-1.5 rounded-full border border-emerald-950/[0.08] bg-white hover:bg-emerald-50 hover:border-emerald-300 text-emerald-900 text-xs font-semibold flex items-center gap-1 transition active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap shrink-0"
-        >
-          <span>📦</span>
-          <span>备份</span>
-        </button>
-        <button 
-          type="button"
-          @click="isLogModalOpen = true"
-          title="运行日志"
-          class="px-2.5 sm:px-3 py-1.5 rounded-full border border-emerald-950/[0.08] bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold flex items-center gap-1 transition active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap shrink-0"
-        >
-          <span>日志</span>
-        </button>
-        <button 
-          v-if="securityEngine.securityConfig.value.is_locked"
-          type="button"
-          @click="securityEngine.lockAppNow"
-          :title="`锁定 (${modifierKey}+L)`"
-          class="px-2.5 sm:px-3 py-1.5 rounded-full border border-emerald-950/[0.08] bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold flex items-center gap-1 transition active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap shrink-0"
-        >
-          <span>锁定</span>
-        </button>
+        <!-- 宽屏直接展示 (>= 900px) -->
+        <div class="hidden min-[900px]:flex items-center gap-1.5">
+          <button 
+            type="button"
+            @click="isBackupModalOpen = true"
+            title="数据备份与资产安全中心"
+            class="px-2.5 py-1 rounded-full border border-emerald-950/[0.08] bg-white hover:bg-emerald-50 text-emerald-900 text-xs font-semibold flex items-center gap-1 transition active:scale-95 cursor-pointer shadow-2xs"
+          >
+            <span>📦</span><span>备份</span>
+          </button>
+          <button 
+            type="button"
+            @click="isLogModalOpen = true"
+            title="运行日志"
+            class="px-2.5 py-1 rounded-full border border-emerald-950/[0.08] bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold flex items-center gap-1 transition active:scale-95 cursor-pointer shadow-2xs"
+          >
+            <span>日志</span>
+          </button>
+          <button 
+            v-if="securityEngine.securityConfig.value.is_locked"
+            type="button"
+            @click="securityEngine.lockAppNow"
+            :title="`锁定 (${modifierKey}+L)`"
+            class="px-2.5 py-1 rounded-full border border-emerald-950/[0.08] bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold flex items-center gap-1 transition active:scale-95 cursor-pointer shadow-2xs"
+          >
+            <span>🔒</span><span>锁定</span>
+          </button>
+        </div>
+
+        <!-- 小屏/半屏时呈现的“更多 ▾”弹出菜单 (< 900px) -->
+        <div class="relative min-[900px]:hidden">
+          <button 
+            type="button"
+            @click="isMoreMenuOpen = !isMoreMenuOpen"
+            class="px-2.5 py-1 rounded-full border border-emerald-950/[0.08] bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold flex items-center gap-1 transition active:scale-95 cursor-pointer shadow-2xs"
+          >
+            <span>工具</span>
+            <span class="text-[9px] opacity-60">▾</span>
+          </button>
+
+          <div 
+            v-if="isMoreMenuOpen" 
+            class="absolute right-0 top-full mt-2 w-32 p-1 rounded-2xl bg-white border border-emerald-950/[0.1] shadow-xl z-50 flex flex-col gap-0.5 animate-pop"
+            @click="isMoreMenuOpen = false"
+          >
+            <button @click="isBackupModalOpen = true" class="w-full text-left px-3 py-1.5 rounded-xl text-xs text-slate-700 hover:bg-emerald-50 hover:text-emerald-900 flex items-center gap-1.5 cursor-pointer">
+              <span>📦</span><span>数据备份</span>
+            </button>
+            <button @click="isLogModalOpen = true" class="w-full text-left px-3 py-1.5 rounded-xl text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-1.5 cursor-pointer">
+              <span>📋</span><span>运行日志</span>
+            </button>
+            <button v-if="securityEngine.securityConfig.value.is_locked" @click="securityEngine.lockAppNow" class="w-full text-left px-3 py-1.5 rounded-xl text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-1.5 cursor-pointer">
+              <span>🔒</span><span>立即锁定</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 偏好设置常驻 -->
         <button 
           type="button"
           @click="isSettingsOpen = true"
-          class="px-2.5 sm:px-3 py-1.5 rounded-full border border-emerald-950/[0.08] bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold flex items-center gap-1 transition active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap shrink-0"
+          class="px-2.5 py-1 rounded-full border border-emerald-950/[0.08] bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold flex items-center gap-1 transition active:scale-95 cursor-pointer shadow-2xs"
         >
           <span>偏好</span>
           <span class="text-[10px] opacity-60">⚙</span>
@@ -2024,31 +2166,58 @@ const handleImportFileInputChange = (e: Event) => {
         
         <!-- 1. 模式选择与快捷操作栏 -->
         <div class="shrink-0 h-11 px-4 border-b border-slate-100 bg-slate-50/70 flex items-center justify-between gap-2">
-          <!-- 模式切换分段器 -->
-          <div class="flex items-center p-0.5 rounded-xl bg-slate-200/60 border border-slate-200/80">
+          <!-- 模式切换分段器 (苹果物理流体滑块统一版) -->
+          <div 
+            class="relative flex items-center p-0.5 rounded-full border border-emerald-950/[0.08] bg-slate-200/55 shadow-[inset_0_1px_2.5px_rgba(0,0,0,0.06)] select-none isolate"
+          >
+            <!-- 唯一物理实体滑块：随模式自适应色相微调 -->
+            <div 
+              class="absolute top-0.5 bottom-0.5 left-0 rounded-full transition-all duration-300 pointer-events-none z-0"
+              :style="{
+                ...entryGliderStyle,
+                transitionTimingFunction: 'cubic-bezier(0.2, 0.95, 0.3, 1)',
+                backgroundColor: entryType === 2 
+                  ? '#EEF2FF' 
+                  : (entryType === 1 ? '#FEF3C7' : '#FFFFFF'),
+                boxShadow: entryType === 2
+                  ? '0 2px 8px -1px rgba(99, 102, 241, 0.25), 0 0 0 1px rgba(99, 102, 241, 0.2)'
+                  : (entryType === 1 
+                    ? '0 2px 8px -1px rgba(245, 158, 11, 0.25), 0 0 0 1px rgba(245, 158, 11, 0.2)' 
+                    : '0 2px 8px -1px rgba(15, 35, 24, 0.12), 0 1px 3px rgba(0,0,0,0.06), 0 0 0 0.5px rgba(0,0,0,0.04)')
+              }"
+            ></div>
+
+            <!-- 1. 摘录 -->
             <button 
               type="button"
+              :ref="(el) => entryTabRefs[0] = el as HTMLElement"
               @click="entryType = 0"
-              class="px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer"
-              :class="entryType === 0 ? 'bg-white text-emerald-900 shadow-2xs' : 'text-slate-500 hover:text-slate-900'"
+              class="relative z-10 px-3 py-1 rounded-full text-xs font-bold transition-transform duration-150 active:scale-92 cursor-pointer flex items-center gap-1 shrink-0"
+              :class="entryType === 0 ? 'text-emerald-950 font-extrabold' : 'text-slate-500 hover:text-slate-800'"
             >
-              📖 摘录
+              <span>📖</span><span>摘录</span>
             </button>
+
+            <!-- 2. 感悟 -->
             <button 
               type="button"
+              :ref="(el) => entryTabRefs[2] = el as HTMLElement"
               @click="entryType = 2"
-              class="px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1"
-              :class="entryType === 2 ? 'bg-indigo-600 text-white shadow-2xs' : 'text-slate-500 hover:text-slate-900'"
+              class="relative z-10 px-3 py-1 rounded-full text-xs font-bold transition-transform duration-150 active:scale-92 cursor-pointer flex items-center gap-1 shrink-0"
+              :class="entryType === 2 ? 'text-indigo-950 font-extrabold' : 'text-slate-500 hover:text-slate-800'"
             >
-              <span>💡 感悟</span>
+              <span>💡</span><span>感悟</span>
             </button>
+
+            <!-- 3. 问题 -->
             <button 
               type="button"
+              :ref="(el) => entryTabRefs[1] = el as HTMLElement"
               @click="entryType = 1"
-              class="px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1"
-              :class="entryType === 1 ? 'bg-amber-500 text-white shadow-2xs' : 'text-slate-500 hover:text-slate-900'"
+              class="relative z-10 px-3 py-1 rounded-full text-xs font-bold transition-transform duration-150 active:scale-92 cursor-pointer flex items-center gap-1 shrink-0"
+              :class="entryType === 1 ? 'text-amber-950 font-extrabold' : 'text-slate-500 hover:text-slate-800'"
             >
-              <span>❓ 问题</span>
+              <span>❓</span><span>问题</span>
             </button>
           </div>
 
@@ -2111,7 +2280,7 @@ const handleImportFileInputChange = (e: Event) => {
         <Transition name="fade">
           <div 
             v-if="duplicateDetector.matchResult.value" 
-            class="shrink-0 mx-4 my-2 p-3 rounded-2xl bg-amber-50/90 border border-amber-300/80 shadow-2xs flex flex-col gap-2 animate-fade-in text-xs select-none"
+            class="shrink-0 mx-4 my-1.5 p-3 rounded-xl bg-amber-50 border border-amber-300/80 shadow-none flex flex-col gap-2 animate-fade-in text-xs select-none"
           >
             <div class="flex items-center justify-between">
               <div class="flex items-center gap-2 flex-wrap min-w-0">
@@ -2168,9 +2337,9 @@ const handleImportFileInputChange = (e: Event) => {
           />
         </div>
 
-        <!-- 4. 出处背景输入行（高质感典雅输入槽） -->
-        <div class="shrink-0 px-5 py-2.5 bg-gradient-to-b from-[#FAFBF9] to-[#F4F6F3]/60 border-t border-emerald-950/[0.06] flex items-center">
-          <div class="flex-1 flex items-center gap-2.5 px-3 py-1.5 rounded-2xl bg-white border border-slate-200/90 hover:border-emerald-300 focus-within:border-emerald-500 focus-within:ring-2 focus-within:ring-emerald-400/20 shadow-2xs transition-all duration-150 group">
+        <!-- 4. 出处背景输入行 (纯色实体底 + 图层独立隔离，彻底免疫外部阴影穿模) -->
+        <div class="shrink-0 px-5 py-2 bg-[#F8FAF7] border-t border-emerald-950/[0.06] flex items-center isolate relative z-10">
+          <div class="flex-1 flex items-center gap-2.5 px-3 py-1.5 rounded-xl bg-white border border-slate-200/90 hover:border-emerald-300 focus-within:border-emerald-500 focus-within:ring-2 focus-within:ring-emerald-400/20 transition-all duration-150 group">
             <!-- 动态三态徽章 -->
             <span 
               class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-xl text-[11px] font-bold tracking-tight shrink-0 select-none shadow-2xs border transition-colors"
@@ -2250,65 +2419,98 @@ const handleImportFileInputChange = (e: Event) => {
 
         </div>
 
-        <!-- 6. 底栏操作中枢：分类标签 + 立即收录大按钮 (闭环动线，一气呵成) -->
-        <div class="shrink-0 px-5 py-3 bg-white border-t border-slate-100 flex items-center justify-between gap-4">
+        <!-- 6. 底栏操作中枢：分类标签 + 立即收录大按钮 (带有独立绝对定位浮层安全锚点) -->
+        <div class="relative shrink-0 px-5 py-3 bg-white border-t border-slate-100 flex items-center justify-between gap-4">
+          <!-- 架构级解耦：联想浮层移至全局底栏安全锚点，绝不与小输入槽发生几何裁剪与 GPU 阴影撕裂 -->
+          <Transition name="fade">
+            <div 
+              v-if="tagsEngine.tagSuggestions.value.length > 0"
+              class="absolute left-24 bottom-[calc(100%+6px)] min-w-[260px] max-w-sm p-1.5 rounded-2xl bg-white border border-emerald-950/[0.12] shadow-2xl z-[100] flex flex-col gap-0.5 select-none animate-pop"
+              @mousedown.prevent
+            >
+              <div class="px-2 py-1 text-[10px] font-mono text-slate-400 border-b border-slate-100 flex items-center justify-between">
+                <span>匹配既有标签</span>
+                <span>回车快速选取</span>
+              </div>
+              <button
+                v-for="s in tagsEngine.tagSuggestions.value"
+                :key="s.id"
+                type="button"
+                @click="tagsEngine.pushTag(s.name)"
+                class="w-full text-left px-2.5 py-1.5 rounded-xl text-xs hover:bg-emerald-50 text-slate-700 hover:text-emerald-900 flex items-center justify-between transition cursor-pointer"
+              >
+                <span class="truncate font-semibold font-mono">#{{ tagsEngine.formatHierarchyTagName(s.name) }}</span>
+                <span class="text-[10px] opacity-60 font-mono">({{ s.count }})</span>
+              </button>
+            </div>
+          </Transition>
           
           <!-- 标签选择与快速贴标签区 -->
-          <div class="flex-1 min-w-0 flex items-center gap-2">
-            <!-- 标签库弹窗按钮 -->
-            <button 
-              type="button"
-              @click="tagsEngine.openTagPickerModal(null)" 
-              class="h-8 px-3 rounded-xl border border-slate-200 hover:border-emerald-300 bg-slate-50 hover:bg-emerald-50 text-slate-700 hover:text-emerald-900 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer shrink-0 shadow-2xs"
-            >
-              <span>🏷️ 标签</span>
-              <span class="font-mono text-[10.5px] opacity-60">({{ tagsEngine.tagStats.value.length }})</span>
-            </button>
+          <div class="flex-1 min-w-0 flex flex-col gap-1.5">
+            <div class="flex items-center gap-2">
+              <!-- 标签库大弹窗按钮 (带色相指示) -->
+              <button 
+                type="button"
+                @click="tagsEngine.openTagPickerModal(null)" 
+                class="h-8 px-3 rounded-xl border border-slate-200/90 hover:border-emerald-300 bg-slate-50 hover:bg-emerald-50/70 text-slate-700 hover:text-emerald-900 text-xs font-semibold flex items-center gap-1.5 transition active:scale-95 cursor-pointer shrink-0 shadow-2xs"
+                title="浏览完整层级标签库"
+              >
+                <span>🏷️ 标签库</span>
+                <span class="font-mono text-[10.5px] opacity-60">({{ tagsEngine.tagStats.value.length }})</span>
+              </button>
 
-            <!-- 已挂载标签胶囊流与即时输入框 -->
-            <div class="flex-1 min-h-[38px] max-h-[88px] overflow-y-auto stable-scroll px-3 py-1 rounded-2xl border border-slate-200/80 bg-slate-50/70 flex flex-wrap items-center gap-1.5 focus-within:bg-white focus-within:border-emerald-500 transition-all">
+              <!-- 智能意图前瞻候选流 (0ms 肌肉触达，视觉记忆重点) -->
+              <div v-if="smartContextSuggestedTags.length > 0" class="flex items-center gap-1.5 overflow-x-auto stable-scroll py-0.5 select-none">
+                <span class="text-[10px] font-bold text-slate-400 font-mono flex items-center gap-0.5 shrink-0">
+                  <span class="text-amber-500">⚡</span>预测:
+                </span>
+                <button
+                  v-for="candTag in smartContextSuggestedTags"
+                  :key="'cand_' + candTag"
+                  type="button"
+                  @click="tagsEngine.pushTag(candTag)"
+                  :title="`快捷附上: #${tagsEngine.formatHierarchyTagName(candTag)}`"
+                  class="h-6 px-2.5 rounded-full border text-[11px] font-semibold inline-flex items-center gap-1 transition-all duration-150 cursor-pointer shadow-2xs hover:scale-105 active:scale-95 shrink-0"
+                  :style="{ 
+                    backgroundColor: tagsEngine.getTagColor(candTag).bg, 
+                    borderColor: tagsEngine.getTagColor(candTag).border, 
+                    color: tagsEngine.getTagColor(candTag).text 
+                  }"
+                >
+                  <span class="w-1.5 h-1.5 rounded-full" :style="{ backgroundColor: tagsEngine.getTagColor(candTag).dot }"></span>
+                  <span class="leading-none">+ {{ tagsEngine.getLeafTagName(candTag) }}</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- 已挂载标签胶囊流与即时输入槽 -->
+            <div class="min-h-[38px] max-h-[88px] overflow-y-auto stable-scroll px-3 py-1 rounded-xl border border-slate-200/90 bg-slate-50/60 flex flex-wrap items-center gap-1.5 focus-within:bg-white focus-within:border-emerald-500 focus-within:ring-2 focus-within:ring-emerald-400/20 transition-all">
               <span 
                 v-for="(tag, idx) in tagsEngine.attachedTags.value" 
                 :key="tag"
-                class="text-xs px-2.5 py-0.5 rounded-full border flex items-center gap-1 shadow-2xs font-semibold"
+                class="text-xs px-2.5 py-0.5 rounded-full border flex items-center gap-1.5 shadow-2xs font-semibold animate-pop transition-transform"
                 :style="{ backgroundColor: tagsEngine.getTagColor(tag).bg, borderColor: tagsEngine.getTagColor(tag).border, color: tagsEngine.getTagColor(tag).text }"
               >
-                <span class="w-1.5 h-1.5 rounded-full" :style="{ backgroundColor: tagsEngine.getTagColor(tag).dot }"></span>
+                <span class="w-1.5 h-1.5 rounded-full shrink-0" :style="{ backgroundColor: tagsEngine.getTagColor(tag).dot }"></span>
                 <span>{{ tagsEngine.formatHierarchyTagName(tag) }}</span>
-                <button @click="tagsEngine.removeAttachedTag(idx)" class="opacity-50 hover:opacity-100 cursor-pointer ml-0.5">×</button>
+                <button @click="tagsEngine.removeAttachedTag(idx)" class="opacity-40 hover:opacity-100 cursor-pointer ml-0.5 text-[11px] font-bold">×</button>
               </span>
 
-              <div class="relative flex-1 min-w-[140px] flex items-center">
+              <div class="flex-1 min-w-[130px] flex items-center">
                 <input 
+                  ref="tagInputRef"
                   type="text"
                   v-model="tagsEngine.tagInputText.value"
                   @keydown="tagsEngine.handleTagInputKeydown" 
                   @blur="tagsEngine.pushTag(tagsEngine.tagInputText.value)"
-                  placeholder="输入标签名，按回车或逗号贴上..." 
-                  class="bg-transparent text-xs w-full focus:outline-none text-[#0F172A] placeholder-[#94A3B8]"
+                  autocomplete="off"
+                  spellcheck="false"
+                  placeholder="键入标签名，回车贴上..." 
+                  class="bg-transparent text-xs w-full focus:outline-none text-[#0F172A] placeholder:text-slate-400 font-sans"
                 />
-
-                <!-- 联想提示框 -->
-                <div 
-                  v-if="tagsEngine.tagSuggestions.value.length > 0"
-                  class="absolute left-0 bottom-full mb-2 min-w-[280px] max-w-md p-1.5 rounded-2xl bg-white border border-emerald-950/[0.12] shadow-xl z-50 flex flex-col gap-0.5"
-                  @mousedown.prevent
-                >
-                  <button
-                    v-for="s in tagsEngine.tagSuggestions.value"
-                    :key="s.id"
-                    type="button"
-                    @click="tagsEngine.pushTag(s.name)"
-                    class="w-full text-left px-2 py-1 rounded-xl text-xs hover:bg-emerald-50 text-slate-700 hover:text-emerald-900 flex items-center justify-between transition cursor-pointer"
-                  >
-                    <span class="truncate font-semibold font-mono">#{{ tagsEngine.formatHierarchyTagName(s.name) }}</span>
-                    <span class="text-[10px] opacity-60 font-mono">({{ s.count }})</span>
-                  </button>
-                </div>
               </div>
             </div>
-
-            </div>
+          </div>
 
           <!-- 保存提交大按钮 (与左侧编辑完全连贯) -->
           <button 
@@ -2450,52 +2652,88 @@ const handleImportFileInputChange = (e: Event) => {
                   v-for="row in tagsEngine.flattenedTagTree.value" 
                   :key="row.fullPath"
                   @click="tagsEngine.selectedTag.value = row.fullPath; loadData();"
-                  class="group relative flex items-center justify-between py-1.5 pr-2 rounded-xl cursor-pointer transition-colors duration-100"
-                  :class="tagsEngine.selectedTag.value === row.fullPath ? 'font-bold shadow-2xs' : 'hover:bg-slate-100/90 text-slate-700'"
+                  @dblclick.stop="row.hasChildren && tagsEngine.toggleTagNodeExpand(row.fullPath)"
+                  class="group relative flex items-center justify-between py-1 pr-2.5 my-0.5 rounded-[12px] cursor-pointer transition-all duration-200 select-none border border-transparent"
+                  :class="tagsEngine.selectedTag.value === row.fullPath 
+                    ? 'font-bold shadow-2xs' 
+                    : 'hover:bg-slate-100/80 text-slate-700'"
                   :style="tagsEngine.selectedTag.value === row.fullPath 
-                    ? { backgroundColor: tagsEngine.getTagColor(row.name).bg, color: tagsEngine.getTagColor(row.name).text, borderLeft: `3px solid ${tagsEngine.getTagColor(row.name).dot}` } 
+                    ? { 
+                        backgroundColor: tagsEngine.getTagColor(row.name).bg, 
+                        color: tagsEngine.getTagColor(row.name).text, 
+                        borderColor: tagsEngine.getTagColor(row.name).border 
+                      } 
                     : { paddingLeft: `${Math.max(6, row.depth * 14 + 6)}px` }"
+                  title="单击筛选手记，双击展开/折叠目录"
                 >
-                  <!-- 层级缩进引导线 (深度 > 0 时显示) -->
+                  <!-- 雅致层级导轨母线 (深度 > 0 时垂直垂挂) -->
                   <span 
                     v-if="row.depth > 0 && tagsEngine.selectedTag.value !== row.fullPath" 
-                    class="absolute top-0 bottom-0 w-[1px] bg-slate-200/80 pointer-events-none"
-                    :style="{ left: `${row.depth * 14 - 3}px` }"
+                    class="absolute top-0 bottom-0 w-[1.5px] rounded-full pointer-events-none transition-colors"
+                    :style="{ 
+                      left: `${row.depth * 14 - 3}px`,
+                      backgroundColor: 'rgba(15, 23, 42, 0.08)'
+                    }"
                   ></span>
 
                   <!-- 节点核心内容区 -->
                   <div class="flex items-center gap-1.5 min-w-0 flex-1">
-                    <!-- 折叠展开触发器 -->
+                    
+                    <!-- 1. 深度优化的大热区折叠/展开触控岛 (24x24px 宽大热区，告别微操失误) -->
                     <button 
                       v-if="row.hasChildren"
                       type="button"
                       @click.stop="tagsEngine.toggleTagNodeExpand(row.fullPath)"
-                      class="w-4 h-4 shrink-0 flex items-center justify-center rounded hover:bg-black/10 text-[9px] font-bold text-slate-500 transition-transform"
+                      :title="row.isExpanded ? '点击收起目录 (或双击此行)' : '点击展开目录 (或双击此行)'"
+                      class="w-6 h-6 shrink-0 flex items-center justify-center rounded-[8px] hover:bg-black/8 active:bg-black/15 text-slate-400 hover:text-slate-800 transition-all duration-150 cursor-pointer -ml-1 group/expand"
                     >
-                      {{ row.isExpanded ? '▾' : '▸' }}
+                      <!-- 苹果级平滑阻尼顺时针旋转 90° 矢量箭头 -->
+                      <svg 
+                        viewBox="0 0 16 16" 
+                        fill="currentColor" 
+                        class="w-3.5 h-3.5 transition-transform duration-250 ease-out"
+                        :style="{
+                          transform: row.isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+                          transitionTimingFunction: 'cubic-bezier(0.2, 0.95, 0.3, 1)'
+                        }"
+                      >
+                        <path d="M6.2 3.8a.75.75 0 0 0-1.2.6v7.2a.75.75 0 0 0 1.2.6l4.8-3.6a.75.75 0 0 0 0-1.2L6.2 3.8z"/>
+                      </svg>
                     </button>
+
+                    <!-- 叶子节点固有色相小圆点 -->
                     <span 
                       v-else 
-                      class="w-2 h-2 shrink-0 rounded-full mx-1"
+                      class="w-2 h-2 shrink-0 rounded-full mx-1.5 shadow-2xs"
                       :style="{ backgroundColor: tagsEngine.getTagColor(row.name).dot }"
                     ></span>
 
+                    <!-- 标签文字 -->
                     <span 
-                      class="truncate text-xs tracking-tight"
+                      class="truncate text-[12.5px] tracking-tight leading-none py-1"
                       :class="{ 'underline decoration-emerald-500 decoration-2 font-bold': row.isMatched }"
                     >
                       {{ row.name }}
                     </span>
+
+                    <!-- 悬浮快捷添加子项小按钮 -->
                     <button
                       type="button"
                       @click.stop="quickAddSidebarSubtag(row.fullPath)"
-                      title="添加子标签"
-                      class="opacity-0 group-hover:opacity-100 shrink-0 w-4 h-4 flex items-center justify-center rounded-full hover:bg-emerald-200/70 text-emerald-800 text-xs font-bold transition-opacity cursor-pointer"
-                    >+</button>
+                      title="在此目录下新建子标签"
+                      class="opacity-0 group-hover:opacity-100 shrink-0 w-4 h-4 flex items-center justify-center rounded-full hover:bg-emerald-200/80 text-emerald-900 text-xs font-bold transition-all duration-150 cursor-pointer ml-0.5 shadow-2xs"
+                    >
+                      +
+                    </button>
                   </div>
 
-                  <!-- 数量角标 -->
-                  <span class="font-mono text-[10.5px] opacity-60 ml-1 shrink-0">
+                  <!-- 2. 数量角标 (大父级带专属轻底色，视觉清晰) -->
+                  <span 
+                    class="font-mono text-[10.5px] tabular-nums px-1.5 py-0.2 rounded-md shrink-0 ml-1 font-semibold transition-colors"
+                    :class="tagsEngine.selectedTag.value === row.fullPath 
+                      ? 'bg-black/10' 
+                      : (row.hasChildren ? 'bg-slate-200/60 text-slate-600' : 'text-slate-400')"
+                  >
                     {{ row.totalCount }}
                   </span>
                 </div>
@@ -2779,7 +3017,7 @@ const handleImportFileInputChange = (e: Event) => {
             :style="{ height: virtualScrollEngine.virtualState.value.topSpacer + 'px', flexShrink: 0 }"
           ></div>
 
-          <div class="flex flex-col gap-6 w-full">
+          <div class="flex flex-col gap-2.5 w-full">
             <article 
               v-for="card in virtualScrollEngine.virtualState.value.visibleItems" 
               :key="card.id"
@@ -2788,35 +3026,32 @@ const handleImportFileInputChange = (e: Event) => {
               :ref="(el) => virtualScrollEngine.registerItemElement(card.id, el as HTMLElement)"
               @click="handleCardClick(card.id)"
               @mouseleave="handleCardMouseLeave(card.id)"
-              class="relative soft-card p-5 sm:p-6 flex flex-col gap-3 transition-all duration-150 min-w-0"
+              class="relative soft-card p-3 sm:px-4 sm:py-3 flex flex-col gap-1.5 transition-all duration-150 min-w-0"
               :class="[
                 quoteLinksEngine.highlightedQuoteId.value === card.id ? 'card-target-arrival' : '',
                 activeActionCardId === card.id ? 'ring-2 ring-emerald-500/40 shadow-md bg-white' : 'hover:border-emerald-500/30'
               ]"
             >
-              <!-- 维度一：专属同心年轮物理印章 (右上角微光展现时光厚度) -->
-              <div 
-                class="absolute right-6 top-5 z-10 flex items-center gap-2 select-none"
-                :class="{ 'opacity-0 pointer-events-none': activeActionCardId === card.id }"
-              >
+              <!-- 专属同心年轮物理印章 (永久常驻显示，彻底消除 hover 时的闪烁跳动) -->
+              <div class="absolute right-4 top-3.5 z-10 flex items-center gap-1.5 select-none pointer-events-none">
                 <div 
                   v-if="isCardPinned(card.id)"
-                  class="flex items-center justify-center w-7 h-7 rounded-full bg-amber-100 border border-amber-300 shadow-2xs text-xs select-none pointer-events-none"
+                  class="flex items-center justify-center w-5 h-5 rounded-full bg-amber-100 border border-amber-300 shadow-2xs text-[10px]"
                   title="已固定至常看"
                 >
-                  <span class="text-xs leading-none">🌟</span>
+                  <span class="leading-none">🌟</span>
                 </div>
                 <TreeRingStamp 
                   :rings-count="(card.thoughts || []).length" 
                   :created-at="card.created_at" 
-                  :size="30" 
+                  :size="24" 
                 />
               </div>
 
-              <!-- 悬浮操作胶囊 -->
+              <!-- 悬浮操作胶囊 (向左平移排布在印章左侧，互不干扰，绝不遮挡首行文字) -->
               <div 
                 v-if="(activeActionCardId === card.id || editingQuoteId === card.id) && editingThoughtId !== card.id && !editingThoughtId && activeAppendQuoteId !== card.id"
-                class="absolute right-5 top-5 z-20 flex items-center gap-1.5 p-1 rounded-full bg-white/95 border border-emerald-950/[0.1] shadow-xl select-none animate-fade-in"
+                class="absolute right-14 top-3 z-20 flex items-center gap-1 p-0.5 rounded-full bg-white/95 backdrop-blur-xs border border-emerald-950/[0.1] shadow-md select-none animate-fade-in"
                 @click.stop
               >
                 <button @click.stop="openFocusMode(card)" title="专注模式" class="h-7 px-3 rounded-full bg-slate-900 text-white text-xs font-bold flex items-center gap-1 shadow-xs">
@@ -2898,8 +3133,8 @@ const handleImportFileInputChange = (e: Event) => {
                 </div>
               </div>
 
-              <div v-else class="relative pl-4 border-l-[3.5px] rounded-l-xs py-1 mb-1" :style="{ borderColor: card.is_question === 1 ? '#F97316' : (card.is_question === 2 ? '#6366F1' : '#10B981') }">
-                <div v-if="card.is_question !== 0" class="flex items-center gap-2 mb-2.5">
+              <div v-else class="relative pl-3 border-l-[3px] rounded-l-xs py-0.5 mb-1" :style="{ borderColor: card.is_question === 1 ? '#F97316' : (card.is_question === 2 ? '#6366F1' : '#10B981') }">
+                <div v-if="card.is_question !== 0" class="flex items-center gap-1.5 mb-1">
                   <button v-if="card.is_question === 1" @click="handleToggleResolved(card.id)" class="px-3 py-0.5 rounded-full text-[11px] font-bold border shadow-2xs cursor-pointer" :style="card.is_resolved ? { backgroundColor: '#DCFCE7', color: '#15803D', borderColor: '#86EFAC' } : { backgroundColor: '#FEF3C7', color: '#92400E', borderColor: '#FDE68A' }">
                     {{ card.is_resolved ? '✓ 已参透' : '⏳ 探索中' }}
                   </button>
@@ -2925,37 +3160,42 @@ const handleImportFileInputChange = (e: Event) => {
                   </button>
                 </div>
 
-                <div v-if="card.source" class="mt-3 text-xs italic text-slate-600 font-serif">—— <span v-html="richTextEngine.highlightText(card.source, searchQuery)"></span></div>
+                <div v-if="card.source" class="mt-1.5 text-xs italic text-slate-600 font-serif">—— <span v-html="richTextEngine.highlightText(card.source, searchQuery)"></span></div>
               </div>
 
-              <!-- 卡片标签与被引回响胶囊 -->
-              <div class="flex flex-wrap items-center gap-2 pt-1 pb-1">
+              <!-- 卡片标签与被引回响胶囊 (全宽铺展 + 末级紧凑折叠) -->
+              <div class="w-full min-w-0 flex flex-wrap items-center gap-1.5 py-0 select-none">
                 <!-- 反向链接 (温润翡翠色系) -->
                 <button 
                   v-if="knowledgeBase.getBacklinkCount(card.id) > 0"
                   type="button"
                   @click.stop="toggleBacklinks(card.id)"
-                  class="text-xs px-3 py-1 rounded-full border transition-all duration-150 cursor-pointer font-bold flex items-center gap-1.5 shadow-2xs active:scale-95 select-none"
+                  class="text-xs px-2.5 py-0.5 rounded-full border transition-all duration-150 cursor-pointer font-bold flex items-center gap-1 shadow-2xs active:scale-95 select-none shrink-0"
                   :class="expandedBacklinkCardIds[card.id] ? 'bg-emerald-700 text-white border-emerald-700 shadow-xs' : 'bg-emerald-50 hover:bg-emerald-100/90 text-emerald-900 border-emerald-300/80'"
                   title="查看引用此句的手记与年轮"
                 >
-                  <span class="text-xs">🔗</span>
+                  <span class="text-[11px]">🔗</span>
                   <span>{{ knowledgeBase.getBacklinkCount(card.id) }} {{ TERMS.backlinks.badgeSuffix }}</span>
                   <span class="text-[9px] opacity-60">{{ expandedBacklinkCardIds[card.id] ? '▲' : '▼' }}</span>
                 </button>
+                
+                <!-- 精炼末级标签 (悬浮提示全路径，节省 60% 横向空间) -->
                 <span 
                   v-for="tag in card.tags" 
                   :key="tag"
-                  class="text-xs px-3 py-1 rounded-full border font-semibold flex items-center gap-1.5 shadow-2xs transition hover:opacity-90 select-none"
+                  :title="`完整路径: #${tagsEngine.formatHierarchyTagName(tag)} (点击按全路径筛选)`"
+                  class="text-xs px-2.5 py-0.5 rounded-full border font-semibold flex items-center gap-1 shadow-2xs transition hover:opacity-90 select-none max-w-full"
                   :style="{ backgroundColor: tagsEngine.getTagColor(tag).bg, borderColor: tagsEngine.getTagColor(tag).border, color: tagsEngine.getTagColor(tag).text }"
                 >
-                  <span class="w-1.5 h-1.5 rounded-full" :style="{ backgroundColor: tagsEngine.getTagColor(tag).dot }"></span>
-                  <span @click.stop="tagsEngine.selectedTag.value = tag; loadData();" class="cursor-pointer hover:underline">{{ tagsEngine.formatHierarchyTagName(tag) }}</span>
-                  <button @click.stop="tagsEngine.removeTagFromCard(card.id, tag)" class="opacity-40 hover:opacity-100 hover:text-rose-600 cursor-pointer ml-0.5">×</button>
+                  <span class="w-1.5 h-1.5 rounded-full shrink-0" :style="{ backgroundColor: tagsEngine.getTagColor(tag).dot }"></span>
+                  <span v-if="tagsEngine.isHierarchicalTag(tag)" class="opacity-40 font-mono text-[10px] -mr-0.5 tracking-tighter" title="包含上级父类">/</span>
+                  <span @click.stop="tagsEngine.selectedTag.value = tag; loadData();" class="cursor-pointer hover:underline truncate">{{ tagsEngine.getLeafTagName(tag) }}</span>
+                  <button @click.stop="tagsEngine.removeTagFromCard(card.id, tag)" title="移除此标签" class="opacity-40 hover:opacity-100 hover:text-rose-600 cursor-pointer ml-0.5 text-xs">×</button>
                 </span>
+                
                 <button 
                   @click.stop="tagsEngine.openTagPickerModal(card.id)"
-                  class="text-xs px-3 py-1 rounded-full border border-dashed border-emerald-950/[0.18] bg-slate-50 hover:bg-emerald-50 text-slate-600 hover:text-emerald-800 cursor-pointer flex items-center gap-1 shadow-2xs font-semibold"
+                  class="text-xs px-2.5 py-0.5 rounded-full border border-dashed border-emerald-950/[0.18] bg-slate-50 hover:bg-emerald-50 text-slate-600 hover:text-emerald-800 cursor-pointer flex items-center gap-1 shadow-2xs font-semibold shrink-0"
                 >
                   <span>+ 贴标签</span>
                 </button>
@@ -3027,19 +3267,19 @@ const handleImportFileInputChange = (e: Event) => {
               </div>
               </Transition>
 
-              <!-- 灵动年轮思考节点区 -->
-              <div class="pt-4 border-t border-slate-100 flex flex-col gap-3.5">
-                <div class="text-xs text-slate-500 flex items-center justify-between">
-                  <span class="font-bold flex items-center gap-1.5 text-emerald-900">
-                    <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
-                    <span>思维年轮 ({{ card.thoughts.length }} 层演进)</span>
+              <!-- 灵动年轮思考节点区 (极度紧凑布局) -->
+              <div class="pt-2 border-t border-slate-100 flex flex-col gap-1.5">
+                <div class="text-[11px] text-slate-500 flex items-center justify-between leading-none py-0.5">
+                  <span class="font-bold flex items-center gap-1 text-emerald-900">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                    <span>思维年轮 ({{ card.thoughts.length }}层)</span>
                   </span>
-                  <button v-if="card.thoughts.length > 2" @click="toggleCardThoughtsExpand(card.id)" class="text-xs text-emerald-700 font-semibold hover:underline">
-                    {{ isCardThoughtsExpanded(card.id) ? '收起中间历史' : '全部展开' }}
+                  <button v-if="card.thoughts.length > 2" @click="toggleCardThoughtsExpand(card.id)" class="text-[11px] text-emerald-700 font-semibold hover:underline cursor-pointer">
+                    {{ isCardThoughtsExpanded(card.id) ? '收起' : '展开全部' }}
                   </button>
                 </div>
 
-                <div v-if="card.thoughts.length > 0" class="relative timeline-stem-3d flex flex-col gap-4">
+                <div v-if="card.thoughts.length > 0" class="relative timeline-stem-3d flex flex-col gap-2">
                   <template v-for="(t, index) in card.thoughts" :key="t.id">
                     <!-- 中间层级折叠槽 -->
                     <div 
@@ -3072,30 +3312,25 @@ const handleImportFileInputChange = (e: Event) => {
                       v-if="card.thoughts.length <= 2 || isCardThoughtsExpanded(card.id) || index === 0 || index === card.thoughts.length - 1"
                       class="relative ring-card-3d flex flex-col gap-2.5"
                     >
-                      <div class="absolute -left-[28px] top-4 flex items-center justify-center z-10 w-4 h-4 pointer-events-none select-none">
+                      <div class="absolute -left-[18px] top-2.5 flex items-center justify-center z-10 pointer-events-none select-none">
                         <div 
-                          class="rounded-full flex items-center justify-center shadow-xs"
+                          class="w-2 h-2 rounded-full shadow-2xs"
                           :style="{
-                            width: '14px',
-                            height: '14px',
-                            background: card.is_question === 1 ? 'radial-gradient(circle, #FEF3C7 30%, #F59E0B 100%)' : (card.is_question === 2 ? 'radial-gradient(circle, #E0E7FF 30%, #6366F1 100%)' : 'radial-gradient(circle, #D1FAE5 30%, #10B981 100%)'),
-                            border: '2px solid #FFFFFF'
+                            backgroundColor: card.is_question === 1 ? '#F59E0B' : (card.is_question === 2 ? '#6366F1' : '#10B981')
                           }"
-                        >
-                          <span class="w-1 h-1 rounded-full bg-white shadow-2xs"></span>
-                        </div>
+                        ></div>
                       </div>
 
-                      <div class="flex items-center justify-between text-xs text-slate-500 font-mono pb-1 border-b border-slate-100">
-                        <div class="flex items-center gap-2">
-                          <span class="font-bold text-slate-800">{{ formatShortDate(t.created_at) }}</span>
-                          <span class="text-[10px] px-2 py-0.5 rounded-full border border-emerald-200 bg-emerald-50 text-emerald-800 font-sans font-semibold">
+                      <div class="flex items-center justify-between text-[11px] text-slate-400 font-mono leading-none">
+                        <div class="flex items-center gap-1.5">
+                          <span class="font-semibold text-slate-600">{{ formatShortDate(t.created_at) }}</span>
+                          <span class="text-[9.5px] px-1.5 py-0.2 rounded bg-emerald-100/70 text-emerald-800 font-sans font-medium">
                             {{ getRingTimeSpan(card.created_at, t.created_at) }}
                           </span>
                         </div>
-                        <div class="flex items-center gap-1.5 font-sans opacity-75 hover:opacity-100">
-                          <button @click="startEditThought(t)" title="编辑思考" class="text-xs px-2 py-0.5 rounded hover:bg-slate-100 text-slate-600">✏️</button>
-                          <button @click="requestDeleteThought(t.id)" title="删除思考" class="text-xs px-2 py-0.5 rounded hover:bg-rose-50" :class="pendingDeleteThoughtId === t.id ? 'text-rose-600 font-bold' : 'text-slate-400'">
+                        <div class="flex items-center gap-1 font-sans opacity-50 hover:opacity-100">
+                          <button @click="startEditThought(t)" title="编辑思考" class="text-[11px] p-0.5 rounded hover:bg-slate-200/60 text-slate-600 cursor-pointer">✏️</button>
+                          <button @click="requestDeleteThought(t.id)" title="删除思考" class="text-[11px] p-0.5 rounded hover:bg-rose-100" :class="pendingDeleteThoughtId === t.id ? 'text-rose-600 font-bold' : 'text-slate-400 cursor-pointer'">
                             {{ pendingDeleteThoughtId === t.id ? '确定?' : '🗑️' }}
                           </button>
                         </div>
@@ -3178,16 +3413,15 @@ const handleImportFileInputChange = (e: Event) => {
                     </div>
                   </div>
 
-                  <!-- 初始收拢按钮 -->
+                  <!-- 初始收拢按钮 (紧凑微胶囊) -->
                   <button 
                     v-else 
                     type="button" 
                     @click.stop="activeAppendQuoteId = card.id; appendThoughtContent = '';" 
-                    class="h-8 px-4 inline-flex items-center gap-2 rounded-full border border-dashed border-emerald-300 bg-emerald-50/60 hover:bg-emerald-100/80 hover:border-emerald-500 text-xs font-bold text-emerald-800 transition-all duration-150 active:scale-95 cursor-pointer shadow-2xs select-none group"
+                    class="h-6 px-2.5 inline-flex items-center gap-1 rounded-full border border-dashed border-emerald-300/80 bg-emerald-50/50 hover:bg-emerald-100/70 hover:border-emerald-500 text-[11px] font-semibold text-emerald-800 transition-all active:scale-95 cursor-pointer shadow-2xs select-none"
                   >
-                    <span class="w-4 h-4 rounded-full bg-emerald-200 group-hover:bg-emerald-300 flex items-center justify-center text-[10px] font-bold text-emerald-900 transition-colors">+</span>
-                    <span>追加认知年轮</span>
-                    <span class="text-[10px] opacity-60 font-mono">Thought</span>
+                    <span class="text-[10px] font-bold">+</span>
+                    <span>追加年轮</span>
                   </button>
                 </div>
               </div>
@@ -3667,117 +3901,242 @@ const handleImportFileInputChange = (e: Event) => {
       />
     </Teleport>
 
-    <!-- 7. 标签选择器 Modal (精致间距与显式创建版) -->
+    <!-- 7. 标签选择器 Modal (极度紧凑 + 支撑 300+ 标签的双栏分流高效看板) -->
     <Teleport to="body">
       <div 
         v-if="tagsEngine.isTagPickerModalOpen.value"
-        class="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-950/60 animate-fade-in"
+        class="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-5 bg-slate-950/60 backdrop-blur-xs animate-fade-in select-none"
         @click.self="tagsEngine.isTagPickerModalOpen.value = false; loadData();"
       >
-        <div class="w-full max-w-2xl sm:max-w-[720px] soft-modal p-6 sm:p-7 flex flex-col gap-4 max-h-[84vh] overflow-hidden shadow-2xl animate-pop border border-emerald-950/[0.08] bg-white">
+        <div class="w-full max-w-5xl h-[86vh] max-h-[720px] bg-white rounded-2xl border border-emerald-950/[0.08] shadow-2xl flex flex-col overflow-hidden animate-pop">
           
-          <!-- 弹窗标题 -->
-          <div class="flex items-center justify-between pb-3 border-b border-slate-100">
-            <div class="flex items-center gap-2">
-              <span class="text-base">🏷️</span>
-              <h2 class="text-sm font-bold text-[#0F172A]">选择或创建标签</h2>
-              <span class="text-xs font-mono px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 font-bold">
-                {{ tagsEngine.tagStats.value.length }} 个
+          <!-- 1. 一体化紧凑顶栏：标题 + 极速搜索 + 新建回车 + 关闭 (高度仅 44px) -->
+          <div class="h-11 shrink-0 px-3 sm:px-4 border-b border-slate-100 bg-slate-50/70 flex items-center justify-between gap-3">
+            <div class="flex items-center gap-2 shrink-0">
+              <span class="text-xs">🏷️</span>
+              <span class="text-xs font-bold text-slate-800 tracking-tight">标签库</span>
+              <span class="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-emerald-100 text-emerald-800 font-bold">
+                {{ tagsEngine.tagStats.value.length }}
               </span>
             </div>
+
+            <!-- 紧凑搜索框与即时创建 -->
+            <div class="flex-1 max-w-md relative flex items-center">
+              <span class="absolute left-2.5 text-xs text-slate-400 pointer-events-none">🔍</span>
+              <input 
+                type="text"
+                v-model="tagsEngine.tagPickerSearchQuery.value"
+                @keydown.enter="tagsEngine.handleCreateNewTagInPicker"
+                placeholder="搜索或输入新标签按回车..."
+                class="w-full text-xs pl-7 pr-14 py-1.5 rounded-lg border border-slate-200 bg-white text-[#0F172A] focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-400/20 transition-all placeholder:text-slate-400"
+                autofocus
+              />
+              <button 
+                v-if="tagsEngine.tagPickerSearchQuery.value.trim()"
+                type="button"
+                @click="tagsEngine.handleCreateNewTagInPicker"
+                class="absolute right-1 text-[11px] px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-bold cursor-pointer transition"
+              >
+                +回车
+              </button>
+            </div>
+
             <button 
               type="button"
               @click="tagsEngine.isTagPickerModalOpen.value = false; loadData();" 
-              class="text-sm text-slate-400 hover:text-slate-800 cursor-pointer px-1.5 py-0.5 rounded-lg hover:bg-slate-100 transition"
+              class="w-7 h-7 rounded-lg hover:bg-slate-200/60 text-slate-400 hover:text-slate-700 flex items-center justify-center text-xs transition cursor-pointer shrink-0"
             >
               ✕
             </button>
           </div>
 
-          <!-- 搜索与创建栏 -->
-          <div class="flex items-center gap-2">
-            <input 
-              type="text"
-              v-model="tagsEngine.tagPickerSearchQuery.value"
-              @keydown.enter="tagsEngine.handleCreateNewTagInPicker"
-              placeholder="搜索标签，或输入新名称按回车..."
-              class="flex-1 text-xs px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-[#0F172A] focus:bg-white focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-400/20"
-              autofocus
-            />
-            <button 
-              v-if="tagsEngine.tagPickerSearchQuery.value.trim()"
-              type="button"
-              @click="tagsEngine.handleCreateNewTagInPicker"
-              class="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-xs cursor-pointer active:scale-95 whitespace-nowrap transition-all flex items-center gap-1 shrink-0"
-            >
-              <span>+ 创建</span>
-            </button>
-          </div>
+          <!-- 2. 双栏高效支撑架构 (300+ 标签的核心防线) -->
+          <div class="flex-1 min-h-0 flex overflow-hidden">
+            
+            <!-- 左栏：晨光水彩/禅意手账风格导轨 (柔和透亮，与全局 100% 调性统一) -->
+            <aside class="w-40 sm:w-48 border-r border-slate-100 bg-[#F8FAF7] p-2 flex flex-col gap-1 overflow-y-auto stable-scroll shrink-0 select-none">
+              <!-- 全部条目 -->
+              <button 
+                type="button"
+                @click="activePickerGroup = 'all'"
+                class="w-full text-left px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-between transition-all duration-150 cursor-pointer border"
+                :class="activePickerGroup === 'all' 
+                  ? 'bg-white text-emerald-950 border-emerald-300/80 shadow-2xs' 
+                  : 'text-slate-600 hover:bg-slate-200/50 border-transparent'"
+              >
+                <div class="flex items-center gap-2 truncate">
+                  <span class="w-1.5 h-1.5 rounded-full" :class="activePickerGroup === 'all' ? 'bg-emerald-500' : 'bg-slate-300'"></span>
+                  <span>全部标签</span>
+                </div>
+                <span class="text-[11px] font-mono tabular-nums px-1.5 py-0.2 rounded-md font-bold" :class="activePickerGroup === 'all' ? 'bg-emerald-100 text-emerald-900' : 'bg-slate-200/60 text-slate-500'">
+                  {{ tagsEngine.filteredTagsForPicker.value.length }}
+                </span>
+              </button>
 
-          <!-- 当没有匹配到已有标签时，醒目的创建提示卡片 -->
-          <div 
-            v-if="tagsEngine.tagPickerSearchQuery.value.trim() && tagsEngine.filteredTagsForPicker.value.length === 0"
-            @click="tagsEngine.handleCreateNewTagInPicker"
-            class="p-3.5 rounded-2xl bg-emerald-50/90 hover:bg-emerald-100 border border-emerald-300 text-emerald-950 cursor-pointer flex items-center justify-between transition-all active:scale-98 shadow-2xs select-none"
-          >
-            <div class="flex items-center gap-2 text-xs">
-              <span class="text-sm">✨</span>
-              <span>未找到该标签，点击立即创建并贴上：<strong class="font-bold underline text-emerald-900">#{{ tagsEngine.normalizeTagName(tagsEngine.tagPickerSearchQuery.value) }}</strong></span>
-            </div>
-            <span class="text-xs font-bold px-3 py-1 bg-emerald-600 text-white rounded-lg shadow-xs shrink-0">+ 新建</span>
-          </div>
+              <div class="w-full h-[1px] bg-slate-200/50 my-0.5"></div>
 
-          <!-- 标签分类列表区 (舒适的分类标题间距与药丸尺寸) -->
-          <div class="flex-1 stable-scroll flex flex-col gap-4 pr-1 overflow-y-auto pt-1">
-            <div 
-              v-for="[groupName, tagsInGroup] in tagsEngine.groupedTagsForPicker.value" 
-              :key="groupName" 
-              class="flex flex-col gap-2"
-            >
-              <!-- 分类标题 (带适度呼吸留白) -->
-              <div class="text-[11.5px] font-bold text-slate-400 tracking-wider flex items-center gap-1.5 px-0.5">
-                <span class="text-[11px] opacity-75">📁</span>
-                <span>{{ groupName }}</span>
-              </div>
+              <!-- 分类列表 (浅色温润、带微边框与呼吸感) -->
+              <button 
+                v-for="[groupName, list] in tagsEngine.groupedTagsForPicker.value"
+                :key="'aside_' + groupName"
+                type="button"
+                @click="activePickerGroup = groupName"
+                class="w-full text-left px-3 py-2 rounded-xl text-xs transition-all duration-150 flex items-center justify-between cursor-pointer group border relative overflow-hidden"
+                :style="activePickerGroup === groupName ? {
+                  backgroundColor: tagsEngine.getTagColor(groupName).bg,
+                  borderColor: tagsEngine.getTagColor(groupName).border,
+                  color: tagsEngine.getTagColor(groupName).text,
+                  fontWeight: 700
+                } : {
+                  borderColor: 'transparent'
+                }"
+              >
+                <!-- 当前大类专属色相立体指示条 -->
+                <span 
+                  class="absolute left-0 top-1.5 bottom-1.5 w-1 rounded-r-full transition-all"
+                  :style="{ 
+                    backgroundColor: tagsEngine.getTagColor(groupName).dot,
+                    opacity: activePickerGroup === groupName ? 1 : 0.35 
+                  }"
+                ></span>
 
-              <!-- 标签按钮网格 (放宽间距，舒适比例) -->
-              <div class="flex flex-wrap gap-2">
-                <button 
-                  v-for="t in tagsInGroup" 
-                  :key="t.id"
-                  type="button"
-                  @click.stop="tagsEngine.handleSelectTagFromPicker(t.name)"
-                  :title="tagsEngine.formatHierarchyTagName(t.name)"
-                  class="min-h-[32px] py-1.5 px-3.5 rounded-full border text-xs inline-flex items-center gap-2 cursor-pointer shadow-2xs select-none transition-colors duration-100 shrink-0 whitespace-nowrap"
-                  :style="tagsEngine.isTagSelectedInPicker(t.name) 
-                    ? { backgroundColor: tagsEngine.getTagColor(t.name).bg, borderColor: tagsEngine.getTagColor(t.name).border, color: tagsEngine.getTagColor(t.name).text, fontWeight: 600 } 
-                    : { backgroundColor: '#F8FAFC', borderColor: 'rgba(15,23,42,0.12)', color: '#475569', fontWeight: 500 }"
-                >
-                  <!-- 完整显示标签全名与层级路径，绝不截断 -->
-                  <span class="pointer-events-none font-medium leading-relaxed">{{ tagsEngine.formatHierarchyTagName(t.name) }}</span>
-                  
-                  <!-- 雅致的翡翠小圆对勾徽章 -->
+                <div class="flex items-center gap-2 truncate min-w-0 pl-1">
                   <span 
-                    class="w-4 h-4 rounded-full inline-flex items-center justify-center text-[10px] font-bold transition-all duration-150 pointer-events-none shrink-0"
-                    :class="tagsEngine.isTagSelectedInPicker(t.name) ? 'bg-emerald-600 text-white shadow-2xs' : 'opacity-0 scale-75'"
-                  >
-                    ✓
-                  </span>
-                </button>
+                    class="w-2 h-2 rounded-full shrink-0 transition-transform group-hover:scale-125"
+                    :style="{ backgroundColor: tagsEngine.getTagColor(groupName).dot }"
+                  ></span>
+                  <span class="truncate">{{ groupName }}</span>
+                </div>
+                <span 
+                  class="text-[10.5px] font-mono tabular-nums px-1.5 py-0.2 rounded-md shrink-0 ml-1 font-bold"
+                  :style="activePickerGroup === groupName ? {
+                    backgroundColor: tagsEngine.getTagColor(groupName).border,
+                    color: tagsEngine.getTagColor(groupName).text
+                  } : {
+                    backgroundColor: 'rgba(15, 23, 42, 0.05)',
+                    color: '#64748B'
+                  }"
+                >
+                  {{ list.length }}
+                </span>
+              </button>
+            </aside>
+
+            <!-- 右栏：饱满大字体、舒适热区、高信息密度的标签矩阵 -->
+            <main class="flex-1 min-h-0 p-4 sm:p-5 overflow-y-auto stable-scroll flex flex-col gap-4 bg-white">
+              
+              <!-- 快捷创建提示条 -->
+              <div 
+                v-if="tagsEngine.tagPickerSearchQuery.value.trim() && tagsEngine.filteredTagsForPicker.value.length === 0"
+                @click="tagsEngine.handleCreateNewTagInPicker"
+                class="p-3 rounded-xl bg-emerald-50/90 border border-emerald-300 text-emerald-950 cursor-pointer flex items-center justify-between text-xs transition active:scale-98 shadow-2xs"
+              >
+                <div class="flex items-center gap-2">
+                  <span class="text-sm">✨</span>
+                  <span>创建并贴上新标签：<strong class="underline font-bold text-emerald-900">#{{ tagsEngine.normalizeTagName(tagsEngine.tagPickerSearchQuery.value) }}</strong></span>
+                </div>
+                <span class="text-xs font-bold px-2.5 py-1 bg-emerald-600 text-white rounded-lg shadow-xs">+ 回车创建</span>
               </div>
-            </div>
+
+              <!-- 分组大容器 -->
+              <div 
+                v-for="[groupName, tagsInGroup] in tagsEngine.groupedTagsForPicker.value" 
+                :key="'main_' + groupName" 
+                v-show="activePickerGroup === 'all' || activePickerGroup === groupName"
+                class="flex flex-col gap-2"
+              >
+                <!-- 分组标题（杂志级层级） -->
+                <div class="text-xs font-bold tracking-wide flex items-center justify-between px-1 py-1 rounded-lg select-none border-b border-slate-100">
+                  <div class="flex items-center gap-2">
+                    <span 
+                      class="w-2.5 h-2.5 rounded-full shadow-2xs" 
+                      :style="{ backgroundColor: tagsEngine.getTagColor(groupName).dot }"
+                    ></span>
+                    <span 
+                      class="font-extrabold text-[13px] tracking-tight"
+                      :style="{ color: tagsEngine.getTagColor(groupName).text }"
+                    >
+                      {{ groupName }}
+                    </span>
+                    <span class="text-[11px] font-mono text-slate-400 font-normal">
+                      ({{ tagsInGroup.length }} 个节点)
+                    </span>
+                  </div>
+                  <span 
+                    class="text-[10px] font-mono px-2 py-0.5 rounded-full font-bold uppercase tracking-wider"
+                    :style="{ 
+                      backgroundColor: tagsEngine.getTagColor(groupName).bg, 
+                      color: tagsEngine.getTagColor(groupName).text,
+                      border: `1px solid ${tagsEngine.getTagColor(groupName).border}`
+                    }"
+                  >
+                    同系群岛
+                  </span>
+                </div>
+
+                <!-- 饱满、舒展、大字号的现代化标签按钮阵列 (高度 30px，字号 13px，拒绝小家子气) -->
+                <div class="flex flex-wrap gap-2">
+                  <button 
+                    v-for="t in tagsInGroup" 
+                    :key="t.id"
+                    type="button"
+                    @click.stop="tagsEngine.handleSelectTagFromPicker(t.name)"
+                    :title="`全路径: #${tagsEngine.formatHierarchyTagName(t.name)}`"
+                    class="h-[36px] px-4 rounded-[14px] border text-[13.5px] inline-flex items-center gap-2.5 cursor-pointer select-none transition-all duration-150 shrink-0 whitespace-nowrap active:scale-95 hover:shadow-xs group/btn"
+                    :style="tagsEngine.isTagSelectedInPicker(t.name) ? {
+                      /* 选中态：深度饱和水彩、立体阴影、色相纯正 */
+                      backgroundColor: tagsEngine.getTagColor(t.name).bg,
+                      borderColor: tagsEngine.getTagColor(t.name).dot,
+                      color: tagsEngine.getTagColor(t.name).text,
+                      boxShadow: `0 2px 8px -1px ${tagsEngine.getTagColor(t.name).border}, inset 0 0 0 1px ${tagsEngine.getTagColor(t.name).dot}`,
+                      fontWeight: 700
+                    } : {
+                      /* 未选态（视觉记忆关键）：彻底告别白灰！呈现轻薄透亮的水彩浸润底色与同域墨点 */
+                      backgroundColor: tagsEngine.getTagColor(t.name).bg,
+                      borderColor: tagsEngine.getTagColor(t.name).border,
+                      color: tagsEngine.getTagColor(t.name).text,
+                      opacity: 0.82,
+                      fontWeight: 500
+                    }"
+                  >
+                    <!-- 固有色相小圆墨点：视觉定位的第一锚点 -->
+                    <span 
+                      class="w-2 h-2 rounded-full shrink-0 transition-transform group-hover/btn:scale-125"
+                      :style="{ backgroundColor: tagsEngine.getTagColor(t.name).dot }"
+                    ></span>
+
+                    <!-- 剥离重复父级前缀后的清晰中文名 -->
+                    <span class="pointer-events-none leading-none tracking-tight">
+                      {{ t.name.startsWith(groupName + '/') ? t.name.slice(groupName.length + 1) : tagsEngine.getLeafTagName(t.name) }}
+                    </span>
+                    
+                    <!-- 选中状态指示器：与该色相完全咬合的饱满对勾徽章 -->
+                    <span 
+                      v-if="tagsEngine.isTagSelectedInPicker(t.name)"
+                      class="w-4 h-4 rounded-[6px] text-white text-[10px] font-bold inline-flex items-center justify-center shrink-0 pointer-events-none shadow-2xs ml-0.5 animate-pop"
+                      :style="{ backgroundColor: tagsEngine.getTagColor(t.name).dot }"
+                    >
+                      ✓
+                    </span>
+                  </button>
+                </div>
+              </div>
+
+            </main>
           </div>
 
-          <!-- 底部关闭按钮 -->
-          <div class="pt-3 flex justify-end border-t border-slate-100">
+          <!-- 3. 极简底栏 (高度仅 36px) -->
+          <div class="h-9 shrink-0 px-4 border-t border-slate-100 bg-slate-50/60 flex items-center justify-between text-[11px] text-slate-400">
+            <span>支持回车快速新建并选中</span>
             <button 
               type="button"
               @click="tagsEngine.isTagPickerModalOpen.value = false; loadData();" 
-              class="px-6 py-2 rounded-xl text-xs font-bold bg-slate-900 hover:bg-black text-white cursor-pointer shadow-sm transition active:scale-95"
+              class="px-4 py-1 rounded-lg text-xs font-bold bg-slate-900 hover:bg-black text-white cursor-pointer shadow-2xs transition active:scale-95"
             >
               完成
             </button>
           </div>
+
         </div>
       </div>
     </Teleport>

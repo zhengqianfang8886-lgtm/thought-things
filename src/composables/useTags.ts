@@ -41,25 +41,75 @@ export function useTags(
     return normalizeTagName(name).split("/").join(" / ");
   };
 
+  // 卡片常态下仅显示末级核心叶子标签，大量节省横向空间
+  const getLeafTagName = (name: string): string => {
+    const parts = normalizeTagName(name).split("/").filter(Boolean);
+    return parts[parts.length - 1] || name;
+  };
+
+  // 判断是否属于多级标签
+  const isHierarchicalTag = (name: string): boolean => {
+    return normalizeTagName(name).includes("/");
+  };
+
+  // =========================================================================
+  // 色彩心理学核心重构：一级域固有色相固化 + 黄金角最大化离散 + 子标签微漂移衍生
+  // =========================================================================
+  const getDomainHue = (rootDomain: string): number => {
+    let hash = 2166136261;
+    for (let i = 0; i < rootDomain.length; i++) {
+      hash ^= rootDomain.charCodeAt(i);
+      hash = Math.imul(hash, 16777619);
+    }
+    // 黄金角 137.507764度：保证任意数量的根分类在 360° 色轮上均呈最大化均匀离散分布
+    const GOLDEN_ANGLE = 137.50776405003785;
+    return Math.abs(Math.round((Math.abs(hash) * GOLDEN_ANGLE) % 360));
+  };
+
+  const getSubtagDrift = (subPath: string): number => {
+    let h = 0;
+    for (let i = 0; i < subPath.length; i++) {
+      h = (h << 5) - h + subPath.charCodeAt(i);
+      h |= 0;
+    }
+    // 限制在 ±14° 微漂移范围内，既保持与母相的血缘识别度，又具备有机随机感
+    return ((Math.abs(h) % 29) - 14);
+  };
+
   const getTagColor = (tagName: string): TagColorStyle => {
     const clean = normalizeTagName(tagName);
     if (!clean) return { bg: "#F3F4F6", text: "#4B5563", border: "#E5E7EB", dot: "#9CA3AF" };
     if (tagColorCache.has(clean)) return tagColorCache.get(clean)!;
 
-    let hash = 2166136261;
-    for (let i = 0; i < clean.length; i++) {
-      hash ^= clean.charCodeAt(i);
-      hash = Math.imul(hash, 16777619);
-    }
+    const parts = clean.split("/").filter(Boolean);
+    const rootDomain = parts[0] || "通用";
+    const depth = Math.max(0, parts.length - 1);
 
-    const goldenAngle = 137.50776405003785;
-    const hue = Math.abs(Math.round((Math.abs(hash) * goldenAngle) % 360));
+    // 1. 基准色相：完全锁定为一级父域固有色相，同域绝对统一
+    const baseHue = getDomainHue(rootDomain);
+
+    // 2. 子标签色相微漂移：同根生，但各具微差
+    const drift = depth > 0 ? getSubtagDrift(parts.slice(1).join("/")) : 0;
+    const finalHue = (baseHue + drift + 360) % 360;
+
+    // 3. 认知心理学明度/饱和度分级阶梯：
+    //    根分类：稍浓郁，构筑视觉重心
+    //    末级标签：减薄背景明度（提高轻透度），文字采用该色相极深炭墨（WCAG AAA 级可读）
+    const bgSaturation = depth === 0 ? 76 : Math.max(46, 72 - depth * 12);
+    const bgLightness = depth === 0 ? 94 : Math.min(97.5, 94.5 + depth * 1.5);
+
+    const borderSaturation = depth === 0 ? 58 : Math.max(38, 54 - depth * 8);
+    const borderLightness = depth === 0 ? 82 : Math.min(88, 83 + depth * 2.5);
+
+    const textLightness = depth === 0 ? 19 : Math.max(16, 21 - depth * 2);
+
     const color: TagColorStyle = {
-      bg: `hsl(${hue}, 80%, 96%)`,
-      border: `hsl(${hue}, 55%, 82%)`,
-      text: `hsl(${hue}, 85%, 24%)`,
-      dot: `hsl(${hue}, 85%, 48%)`,
+      bg: `hsl(${finalHue}, ${bgSaturation}%, ${bgLightness}%)`,
+      border: `hsl(${finalHue}, ${borderSaturation}%, ${borderLightness}%)`,
+      text: `hsl(${finalHue}, 80%, ${textLightness}%)`,
+      dot: `hsl(${finalHue}, 85%, 45%)`,
     };
+
     tagColorCache.set(clean, color);
     return color;
   };
@@ -567,6 +617,8 @@ export function useTags(
     groupedTagsForPicker,
     normalizeTagName,
     formatHierarchyTagName,
+    getLeafTagName,
+    isHierarchicalTag,
     getTagColor,
     toggleAttachTag,
     pushTag,

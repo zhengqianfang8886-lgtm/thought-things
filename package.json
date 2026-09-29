@@ -72,7 +72,12 @@
     },
     "deb": {
       "priority": "optional"
-    }
+    },
+    "publish": [
+      {
+        "provider": "github"
+      }
+    ]
   },
   "main": "electron/main.cjs",
   "description": "ThoughtRings - 终生思维年轮与知识手记管理系统",

@@ -119,16 +119,29 @@ textarea, input {
   font-family: "Noto Sans CJK SC", "Source Han Sans SC", "PingFang SC", "Microsoft YaHei", -apple-system, system-ui, sans-serif !important;
   font-weight: 400 !important;
   font-size: var(--tr-card-font-size, 15px) !important;
-  line-height: var(--tr-card-line-height, 1.75) !important;
+  line-height: var(--tr-card-line-height, 1.6) !important;
   word-break: break-all !important;
   overflow-wrap: anywhere !important;
-  white-space: pre-wrap !important;
   letter-spacing: 0.01em !important;
   text-rendering: optimizeLegibility !important;
 }
 
 .rich-rendered p {
-  margin: 3px 0 !important;
+  margin: 2px 0 !important;
+}
+
+/* 彻底折叠富文本开头、末尾以及连续空回车产生的冗余巨大空白 */
+.rich-rendered p:empty,
+.rich-rendered p > br:only-child {
+  display: none !important;
+}
+
+.rich-rendered > *:first-child {
+  margin-top: 0 !important;
+}
+
+.rich-rendered > *:last-child {
+  margin-bottom: 0 !important;
 }
 
 /* 优雅半粗体（骨架立体，纯黑突出，笔画缝隙清晰可见） */
@@ -314,35 +327,33 @@ ul[data-type="taskList"] li[data-type="taskItem"][data-checked="true"] > div {
   max-width: 100%;
   background: #FFFFFF;
   border: 1px solid rgba(15, 45, 30, 0.08);
-  border-radius: 18px;
+  border-radius: 14px;
   box-shadow: 
-    0 4px 16px -2px rgba(15, 45, 30, 0.03),
-    0 1px 3px rgba(15, 45, 30, 0.02);
-  padding: 13px 18px;
+    0 2px 10px -2px rgba(15, 45, 30, 0.03),
+    0 1px 2px rgba(15, 45, 30, 0.02);
+  padding: 8px 12px;
   word-break: break-all;
   overflow-wrap: anywhere;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 .ring-card-3d:hover {
-  border-color: rgba(16, 185, 129, 0.3);
-  box-shadow: 
-    0 8px 24px -4px rgba(16, 185, 129, 0.08),
-    0 2px 6px rgba(0, 0, 0, 0.02);
-  transform: translateY(-1px);
+  border-color: rgba(16, 185, 129, 0.28);
+  box-shadow: 0 4px 14px -2px rgba(16, 185, 129, 0.06);
+  /* 彻底拔除 translateY，彻底消除边缘像素反复失焦死循环抽搐 */
 }
 
 .timeline-stem-3d {
   position: relative;
-  padding-left: 28px !important;
-  margin-left: 8px !important;
+  padding-left: 18px !important;
+  margin-left: 4px !important;
 }
 .timeline-stem-3d::before {
   content: "";
   position: absolute;
-  left: 7px;
-  top: 8px;
-  bottom: 8px;
-  width: 2px;
+  left: 4px;
+  top: 6px;
+  bottom: 6px;
+  width: 1.5px;
   background: linear-gradient(180deg, rgba(16, 185, 129, 0.4) 0%, rgba(6, 182, 212, 0.25) 50%, rgba(15, 45, 30, 0.06) 100%);
   border-radius: 9999px;
 }
@@ -571,26 +582,26 @@ ul[data-type="taskList"] li[data-type="taskItem"][data-checked="true"] > div {
    - 对比度：高达 16.5:1 (极黑炭墨 + 高明度经典荧光)
    ========================================================================== */
 
-/* 全局高能 mark 基准：黑度锁死、字重碾压、多行自然包裹 */
+/* 全局高亮 mark 基准：文字为主体，底色通透温润，笔画不糊死 */
 .rich-rendered mark,
 .tiptap mark,
 .tiptap-container mark,
 mark:not(.search-highlight) {
   display: inline !important;
-  color: #000000 !important;                    /* 100% 纯正极黑炭墨，绝不淡化！ */
-  font-weight: 700 !important;                  /* 700 粗体绝对压制，第一眼抓住眼球！ */
-  padding: 1.5px 5px !important;                /* 水平留足 5px 笔触宽度，视觉块感极强 */
-  margin: 0 1.5px !important;
-  border-radius: 4px !important;
+  color: #0F172A !important;                    /* 优雅深炭墨，与正文自然融为一体 */
+  font-weight: 600 !important;                  /* 适度加粗提神，复杂汉字笔画清晰通透 */
+  padding: 1.5px 3.5px !important;              /* 紧凑内边距，呈现自然划线感而非厚重色块 */
+  margin: 0 1px !important;
+  border-radius: 3.5px !important;
   border: none !important;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04) !important;
+  box-shadow: none !important;
   box-decoration-break: clone !important;
   -webkit-box-decoration-break: clone !important;
-  letter-spacing: 0.02em !important;
+  letter-spacing: 0.01em !important;
   text-rendering: optimizeLegibility !important;
 }
 
-/* 1. 闪电曜金 (经典高能荧光黄 · 核心顿悟/黄金原句) - 默认高亮 */
+/* 1. 暖阳淡金（核心顿悟/重点句子）：温和水彩透亮，不刺眼 */
 .rich-rendered mark:not([data-color]):not([style*="background"]):not(.search-highlight),
 .tiptap mark:not([data-color]):not([style*="background"]):not(.search-highlight),
 mark[data-color="#FEF08A"],
@@ -599,37 +610,37 @@ mark[style*="#FEF08A"],
 mark[style*="#FEF3C7"],
 mark[style*="rgb(254, 240, 138)"],
 mark[style*="rgb(254, 243, 199)"] {
-  background-color: #FDE047 !important; /* 纯正高饱和荧光亮黄 (高能聚光灯) */
+  background-color: rgba(254, 240, 138, 0.72) !important;
 }
 
-/* 2. 极光霓绿 (高能荧光薄荷 · 关键结论/事实论据) */
+/* 2. 薄荷嫩翠（论据/关键事实）：柔和清新，不抢视线 */
 mark[data-color="#A7F3D0"],
 mark[data-color="#DCFCE7"],
 mark[style*="#A7F3D0"],
 mark[style*="#DCFCE7"],
 mark[style*="rgb(167, 243, 208)"],
 mark[style*="rgb(220, 252, 231)"] {
-  background-color: #86EFAC !important; /* 鲜明荧光绿 */
+  background-color: rgba(187, 247, 208, 0.7) !important;
 }
 
-/* 3. 电光晴蓝 (高能冰川亮青 · 概念/逻辑脉络) */
+/* 3. 晨曦天青（逻辑脉络/概念定义）：清澈素雅，宁静阅读 */
 mark[data-color="#BAE6FD"],
 mark[data-color="#E0F2FE"],
 mark[style*="#BAE6FD"],
 mark[style*="#E0F2FE"],
 mark[style*="rgb(186, 230, 253)"],
 mark[style*="rgb(224, 242, 254)"] {
-  background-color: #7DD3FC !important; /* 高能亮天蓝 */
+  background-color: rgba(186, 230, 253, 0.7) !important;
 }
 
-/* 4. 烈焰珊瑚 (高能草莓鲜粉 · 警惕/存疑反思) */
+/* 4. 轻柔落樱（警惕/存疑反思）：淡雅粉润，杜绝警戒色带来的压迫感 */
 mark[data-color="#FDA4AF"],
 mark[data-color="#FFE4E6"],
 mark[style*="#FDA4AF"],
 mark[style*="#FFE4E6"],
 mark[style*="rgb(253, 164, 175)"],
 mark[style*="rgb(255, 228, 230)"] {
-  background-color: #FCA5A5 !important; /* 鲜艳珊瑚红 */
+  background-color: rgba(254, 205, 211, 0.7) !important;
 }
 
 /* 正文中暗藏的外链：温和天青蓝细下划线，一眼辨别，绝非隐形地雷 */
@@ -724,4 +735,197 @@ html[data-font-size="large"] .tiptap-container,
 html[data-font-size="large"] .tiptap {
   font-size: 17.5px !important;
   line-height: 1.9 !important;
+}
+
+/* --- 彻底消除虚拟滚动经过图片卡片时的跳动与重排 --- */
+.soft-card {
+  /* contain 优化精简 */
+}
+
+.tr-img-wrapper {
+  min-height: 48px;
+  line-height: 0;
+  display: block;
+}
+
+.tr-img-wrapper img {
+  transform: translateZ(0);
+  image-rendering: -webkit-optimize-contrast;
+}
+
+/* --- 出版级优雅下划线排版微调 (增加呼吸间距，避让字画) --- */
+.rich-rendered u,
+.tiptap u,
+u {
+  text-decoration: underline !important;
+  text-underline-offset: 3.5px !important;       /* 下移 3.5px，远离文字基准线 */
+  text-decoration-thickness: 1.2px !important;    /* 笔触纤细精致，不喧宾夺主 */
+  text-decoration-skip-ink: auto !important;     /* 遇到 g, j, p 等降部笔画自动优雅断开避让 */
+}
+
+
+/* === 极简出版级水彩高亮体系 (彻底消除塑料感与刺眼感) === */
+.rich-rendered mark,
+.tiptap mark,
+.tiptap-container mark,
+mark:not(.search-highlight) {
+  display: inline !important;
+  color: #0F172A !important;                    /* 绝对主导：深炭墨黑字 */
+  font-weight: 600 !important;                  /* 笔画清晰，不粘连 */
+  padding: 1px 3px !important;                  /* 减薄色块厚度，拒绝膏药感 */
+  margin: 0 1px !important;
+  border-radius: 3px !important;
+  border: none !important;
+  box-shadow: none !important;
+  box-decoration-break: clone !important;
+  -webkit-box-decoration-break: clone !important;
+}
+
+/* 1. 暖阳淡金：保持你满意的柔和黄，更添一丝透亮 */
+.rich-rendered mark:not([data-color]):not([style*="background"]):not(.search-highlight),
+.tiptap mark:not([data-color]):not([style*="background"]):not(.search-highlight),
+mark[data-color="#FEF08A"],
+mark[data-color="#FEF3C7"],
+mark[style*="#FEF08A"],
+mark[style*="#FEF3C7"] {
+  background-color: rgba(254, 240, 138, 0.65) !important;
+}
+
+/* 2. 抹茶嫩翠：去掉荧光感，换成温和的天然淡绿 */
+mark[data-color="#A7F3D0"],
+mark[data-color="#DCFCE7"],
+mark[style*="#A7F3D0"],
+mark[style*="#DCFCE7"] {
+  background-color: rgba(187, 247, 208, 0.65) !important;
+}
+
+/* 3. 晨曦天青：降低过高明度，杜绝刺眼 */
+mark[data-color="#BAE6FD"],
+mark[data-color="#E0F2FE"],
+mark[style*="#BAE6FD"],
+mark[style*="#E0F2FE"] {
+  background-color: rgba(186, 230, 253, 0.60) !important;
+}
+
+/* 4. 轻柔淡樱：彻底换掉生肉警报红，变成优雅淡粉，黑字绝不发脏 */
+mark[data-color="#FDA4AF"],
+mark[data-color="#FFE4E6"],
+mark[style*="#FDA4AF"],
+mark[style*="#FFE4E6"] {
+  background-color: rgba(254, 205, 211, 0.60) !important;
+}
+
+
+/* === 极度紧凑出版级排版与卡片间距规范 (High Density Layout) === */
+.soft-card {
+  border-radius: 14px !important;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.04) !important;
+}
+
+.rich-rendered {
+  line-height: 1.55 !important;
+  font-size: 14.5px !important;
+}
+
+.rich-rendered p {
+  margin: 1.5px 0 !important;
+}
+
+.ring-card-3d {
+  border-radius: 10px !important;
+  padding: 6px 10px !important;
+  box-shadow: none !important;
+  background-color: #F8FAF7 !important;
+  border: 1px solid rgba(15, 45, 30, 0.06) !important;
+}
+
+.timeline-stem-3d {
+  padding-left: 14px !important;
+  margin-left: 2px !important;
+}
+
+.timeline-stem-3d::before {
+  left: 3px !important;
+  top: 4px !important;
+  bottom: 4px !important;
+  width: 1.5px !important;
+  opacity: 0.5 !important;
+}
+
+
+/* === 年轮卡片深度紧凑规则 === */
+.ring-card-3d {
+  border-radius: 8px !important;
+  padding: 5px 9px !important;
+  gap: 3px !important;
+  box-shadow: none !important;
+  background-color: #F8FAF7 !important;
+  border: 1px solid rgba(15, 45, 30, 0.06) !important;
+}
+
+.ring-card-3d .rich-rendered {
+  font-size: 13.5px !important;
+  line-height: 1.48 !important;
+}
+
+.timeline-stem-3d {
+  padding-left: 12px !important;
+  margin-left: 1px !important;
+}
+
+.timeline-stem-3d::before {
+  left: 3px !important;
+  top: 4px !important;
+  bottom: 4px !important;
+  width: 1px !important;
+  background: rgba(16, 185, 129, 0.3) !important;
+}
+
+
+/* === 双向链接原子胶囊选中与光标聚焦高亮体系 === */
+.quote-ref-atom {
+  transition: all 0.15s ease !important;
+  cursor: pointer !important;
+}
+
+/* 当光标移动到胶囊、键盘选中胶囊、或点击激活时，清晰展示翡翠聚光轮廓 */
+.quote-ref-atom:focus,
+.quote-ref-atom.ProseMirror-selectednode {
+  outline: 2px solid #10B981 !important;
+  outline-offset: 1.5px !important;
+  background-color: #D1FAE5 !important;
+  border-color: #059669 !important;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.25) !important;
+}
+
+
+/* === 彻底清除输入框匹配/自动填充时产生的突兀黑影 === */
+input:-webkit-autofill,
+input:-webkit-autofill:hover, 
+input:-webkit-autofill:focus, 
+input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 1000px white inset !important;
+  -webkit-text-fill-color: #0F172A !important;
+  transition: background-color 5000s ease-in-out 0s !important;
+}
+
+input {
+  box-shadow: none !important;
+}
+
+
+/* === 彻底抹杀小圆角输入槽内部由于滚动溢出产生的暗黑羽化阴影 === */
+div:has(> input) {
+  scrollbar-width: none !important; /* Firefox 彻底隐藏 */
+}
+
+div:has(> input)::-webkit-scrollbar {
+  display: none !important; /* Chrome/Electron 彻底封杀滚动条黑条 */
+  width: 0 !important;
+  height: 0 !important;
+}
+
+div:has(> input) {
+  -webkit-mask-image: none !important;
+  mask-image: none !important;
 }

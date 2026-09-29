@@ -271,58 +271,111 @@
             <span class="text-[11px] text-slate-400">尝试切换为“全部手记”或拉长统计周期 🌱</span>
           </div>
 
-          <!-- 条形对比图模式 (Linear 级纤细质感) -->
-          <div v-else-if="chartViewMode === 'bar'" class="flex flex-col gap-2 py-0.5">
-            <div 
-              v-for="(item, index) in sortedTrendsList" 
-              :key="item.id"
-              @click="activeTag = item.name"
-              class="p-3 rounded-2xl border transition-all duration-150 cursor-pointer flex flex-col gap-1.5 group"
-              :class="activeTag === item.name 
-                ? 'border-emerald-500/80 bg-emerald-50/40 shadow-xs ring-1 ring-emerald-400/20' 
-                : 'border-slate-200/70 bg-slate-50/40 hover:bg-slate-50 hover:border-emerald-200'"
-            >
-              <!-- 标签与指标行 -->
-              <div class="flex items-center justify-between text-xs">
-                <div class="flex items-center gap-2 min-w-0 flex-1">
-                  <span 
-                    class="font-mono text-[11px] font-bold w-4 shrink-0 text-center"
-                    :class="index === 0 ? 'text-amber-600 font-extrabold' : (index === 1 ? 'text-slate-700' : (index === 2 ? 'text-amber-800' : 'text-slate-400'))"
-                  >
-                    {{ index + 1 }}
-                  </span>
-                  
-                  <span class="w-2 h-2 rounded-full shrink-0" :style="{ backgroundColor: getPaletteColor(index) }"></span>
-                  <span class="font-bold text-slate-800 font-mono truncate text-xs sm:text-[13px]">#{{ item.name }}</span>
+          <!-- 现代顶天立地柱状天际线模式 (Full-Height Skyline Chart) -->
+          <div 
+            v-else-if="chartViewMode === 'bar'" 
+            class="flex-1 min-h-[360px] h-full flex flex-col justify-between p-5 rounded-3xl bg-slate-50/70 border border-slate-200/80 overflow-hidden relative select-none"
+          >
+            <!-- 顶栏标尺刻度说明 -->
+            <div class="shrink-0 flex items-center justify-between pb-2 border-b border-slate-200/80 text-xs">
+              <div class="flex items-center gap-2">
+                <span class="font-mono font-bold text-slate-700 text-xs">📈 增长峰值: <strong class="text-emerald-700">{{ maxBarCount }}</strong> 篇</span>
+                <span class="text-[11px] font-mono text-slate-400">/ 均值: {{ Math.round(maxBarCount / 2) }} 篇</span>
+              </div>
+              <span class="text-[11px] font-mono text-slate-400">点击任意柱体联动穿透右侧手记</span>
+            </div>
 
-                  <!-- 三态构成微型徽章 -->
-                  <div class="hidden sm:flex items-center gap-1 text-[10px] font-mono text-slate-400 ml-1">
-                    <span v-if="item.quote_count" class="px-1.5 py-0.2 rounded bg-slate-200/60 text-slate-700">摘录 {{ item.quote_count }}</span>
-                    <span v-if="item.insight_count" class="px-1.5 py-0.2 rounded bg-indigo-50 text-indigo-700">感悟 {{ item.insight_count }}</span>
-                    <span v-if="item.question_count" class="px-1.5 py-0.2 rounded bg-amber-50 text-amber-800">问题 {{ item.question_count }}</span>
+            <!-- 主图表绘制区：自适应撑满全部垂直空间 -->
+            <div class="flex-1 min-h-0 relative my-3 flex flex-col justify-end">
+              
+              <!-- 1. 绝对定位标尺虚线 (与最高柱体绝对几何贴合) -->
+              <div class="absolute inset-x-0 top-3 bottom-0 flex flex-col justify-between pointer-events-none opacity-50 z-0">
+                <!-- 顶峰参考线 -->
+                <div class="w-full border-b border-dashed border-emerald-500/40 flex items-center justify-end pr-1">
+                  <span class="font-mono text-[10px] text-emerald-800 bg-white/80 px-1 rounded shadow-2xs font-bold">MAX {{ maxBarCount }}</span>
+                </div>
+                <!-- 50% 参考线 -->
+                <div class="w-full border-b border-dashed border-slate-300 flex items-center justify-end pr-1">
+                  <span class="font-mono text-[10px] text-slate-400 bg-white/80 px-1 rounded">MID {{ Math.round(maxBarCount / 2) }}</span>
+                </div>
+                <!-- 地平基准线 (实体稳固) -->
+                <div class="w-full border-b-2 border-slate-300/80"></div>
+              </div>
+
+              <!-- 2. 横向滚动立柱群 (地平线对齐，撑满高度) -->
+              <div class="relative z-10 w-full h-full overflow-x-auto stable-scroll flex items-end gap-4 sm:gap-6 px-4 pb-0 pt-6">
+                
+                <div 
+                  v-for="(item, index) in sortedTrendsList" 
+                  :key="item.id"
+                  @click="activeTag = item.name"
+                  class="group/col flex flex-col items-center h-full justify-end cursor-pointer shrink-0 transition-transform active:scale-95 relative"
+                  :style="{ width: '42px' }"
+                  :title="`#${item.name}: 本期新增 ${item.current_count} 篇`"
+                >
+                  <!-- 柱顶极简微标 (单层一体化，杜绝双层药丸) -->
+                  <div 
+                    class="flex flex-col items-center gap-0.5 mb-1.5 transition-all duration-200"
+                    :class="activeTag === item.name ? '-translate-y-1 scale-110' : 'group-hover/col:-translate-y-0.5'"
+                  >
+                    <span 
+                      v-if="item.delta > 0" 
+                      class="text-[9.5px] font-mono font-extrabold text-emerald-800 leading-none tracking-tight flex items-center gap-0.5"
+                    >
+                      <span class="text-[8px]">▲</span>+{{ item.delta }}
+                    </span>
+                    <span 
+                      class="font-mono font-extrabold text-xs transition-colors leading-none mt-0.5"
+                      :class="activeTag === item.name ? 'text-slate-900 font-black' : 'text-slate-600'"
+                    >
+                      {{ item.current_count }}
+                    </span>
+                  </div>
+
+                  <!-- 柱身实体 (顶天立地高度计算 + 纯正柱体平底扎实结构) -->
+                  <div 
+                    class="w-8 rounded-t-[8px] rounded-b-none relative transition-all duration-300 flex flex-col justify-between overflow-hidden shadow-sm"
+                    :style="{ 
+                      /* 核心修复：最高柱子撑满 92% 垂直高度，彻底消除矮矬悬空感 */
+                      height: `${Math.max(24, Math.round((item.current_count / maxBarCount) * 88))}%`,
+                      background: getBarGradient(index),
+                      boxShadow: activeTag === item.name 
+                        ? `0 0 0 2px #FFFFFF, 0 0 0 4px ${getPaletteColor(index)}, 0 10px 20px -2px ${getPaletteColor(index)}66` 
+                        : `0 4px 12px -2px ${getPaletteColor(index)}33`,
+                      opacity: activeTag === item.name ? 1 : 0.85
+                    }"
+                  >
+                    <!-- 柱顶光感切面 -->
+                    <div class="w-full h-1 bg-white/40"></div>
+
+                    <!-- 柱内微光条 (大柱才显示，增加立体感) -->
+                    <div class="w-full text-center pb-1 pointer-events-none opacity-40 text-white font-mono text-[9px] font-bold hidden sm:block">
+                      {{ item.ratio }}%
+                    </div>
+                  </div>
+
+                  <!-- 柱底基座标签名 (稳扎地平线之下) -->
+                  <div class="mt-2.5 flex flex-col items-center gap-0.5 w-full select-none">
+                    <span 
+                      class="w-2 h-2 rounded-full shrink-0 shadow-2xs transition-transform group-hover/col:scale-125"
+                      :style="{ backgroundColor: getPaletteColor(index) }"
+                    ></span>
+                    <span 
+                      class="text-[11.5px] font-mono font-bold truncate max-w-full text-center transition-colors"
+                      :class="activeTag === item.name ? 'text-slate-900 font-extrabold underline decoration-2' : 'text-slate-600 group-hover/col:text-slate-900'"
+                    >
+                      {{ item.name.split('/').pop() }}
+                    </span>
                   </div>
                 </div>
 
-                <!-- 指标数据 -->
-                <div class="flex items-center gap-2 font-mono shrink-0 text-xs">
-                  <span v-if="item.delta > 0" class="text-[10px] font-bold text-emerald-700 bg-emerald-100/80 px-1.5 py-0.2 rounded">
-                    ↑+{{ item.delta }}
-                  </span>
-                  <span class="font-bold text-slate-800">+{{ item.current_count }} 篇</span>
-                  <span class="text-[10.5px] text-slate-400 w-12 text-right">占 {{ item.ratio }}%</span>
-                </div>
               </div>
+            </div>
 
-              <!-- 纤细高级条形条 (h-1.5，柔和自然色渐变) -->
-              <div class="relative w-full h-1.5 rounded-full bg-slate-100 overflow-hidden">
-                <div 
-                  class="h-full rounded-full transition-all duration-500"
-                  :style="{ 
-                    width: `${Math.min(100, Math.max(3, (item.current_count / maxBarCount) * 100))}%`,
-                    background: getBarGradient(index)
-                  }"
-                ></div>
-              </div>
+            <!-- 底栏数据摘要 -->
+            <div class="shrink-0 pt-2 border-t border-slate-200/80 flex items-center justify-between text-[11px] text-slate-400">
+              <span>📊 纵轴真实柱高映射手记激增量 · 横向排布当前活跃焦点</span>
+              <span class="font-mono">共展示前 {{ sortedTrendsList.length }} 根脉动立柱</span>
             </div>
           </div>
 
@@ -398,9 +451,13 @@
 
         <!-- 关联卡片列表 -->
         <div class="flex-1 min-h-0 stable-scroll overflow-y-auto pr-1 flex flex-col gap-2.5">
-          <div v-if="relatedQuotesInWindow.length === 0" class="py-20 text-center text-slate-400 text-xs flex flex-col items-center gap-1">
-            <span>👈</span>
-            <span>在左侧点击任一激增标签，穿透查看关联手记</span>
+          <div v-if="isRelatedLoading" class="py-20 text-center text-slate-400 text-xs flex flex-col items-center gap-2">
+            <span class="animate-spin text-lg">⏳</span>
+            <span>正在穿透加载关联手记...</span>
+          </div>
+          <div v-else-if="relatedQuotesInWindow.length === 0" class="py-20 text-center text-slate-400 text-xs flex flex-col items-center gap-1">
+            <span class="text-xl">🍃</span>
+            <span>暂无匹配的近期手记</span>
           </div>
 
           <article 
@@ -697,19 +754,48 @@ const selectEntryType = (type: 'all' | number) => {
   loadTrends();
 };
 
-const relatedQuotesInWindow = computed(() => {
-  if (!activeTag.value) return [];
-  let startTs = Date.now() - selectedDays.value * 86400000;
-  let endTs = Date.now();
-  if (isCustomMode.value && customStartDate.value && customEndDate.value) {
-    startTs = new Date(customStartDate.value + "T00:00:00").getTime();
-    endTs = new Date(customEndDate.value + "T23:59:59.999").getTime();
-  }
-  return (props.quotes || [])
-    .filter(q => q.created_at >= startTs && q.created_at <= endTs)
-    .filter(q => selectedEntryType.value === 'all' || q.is_question === selectedEntryType.value)
-    .filter(q => (q.tags || []).some(t => t.replace(/^#+/, '') === activeTag.value));
+import { watch } from 'vue';
+watch([activeTag, selectedDays, selectedEntryType, customStartDate, customEndDate, isCustomMode], () => {
+  fetchRelatedQuotes();
 });
+
+// 右侧手记列表：直连 SQLite 后端，彻底解除 props.quotes 分页条数限制导致的右侧空白问题
+const relatedQuotesInWindow = ref<QuoteDetail[]>([]);
+const isRelatedLoading = ref<boolean>(false);
+
+const fetchRelatedQuotes = async () => {
+  if (!activeTag.value) {
+    relatedQuotesInWindow.value = [];
+    return;
+  }
+
+  isRelatedLoading.value = true;
+  try {
+    let startTs = Date.now() - selectedDays.value * 86400000;
+    let endTs = Date.now();
+    if (isCustomMode.value && customStartDate.value && customEndDate.value) {
+      startTs = new Date(customStartDate.value + "T00:00:00").getTime();
+      endTs = new Date(customEndDate.value + "T23:59:59.999").getTime();
+    }
+
+    const payload: any = {
+      tag: activeTag.value,
+      entryType: selectedEntryType.value,
+      startTs,
+      endTs,
+      limit: 60
+    };
+
+    const res = await invoke('get_quotes', payload);
+    const items = Array.isArray(res) ? res : (res?.items || []);
+    relatedQuotesInWindow.value = items;
+  } catch (err) {
+    console.error('穿透加载关联手记失败:', err);
+    relatedQuotesInWindow.value = [];
+  } finally {
+    isRelatedLoading.value = false;
+  }
+};
 
 const stripHtml = (raw: string): string => {
   if (!raw) return '';
