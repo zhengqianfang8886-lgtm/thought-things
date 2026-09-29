@@ -1,61 +1,57 @@
 name: 🚀 Build and Release ThoughtRings
-
 on:
-  push:
-    tags:
-      - 'v*'
-  workflow_dispatch: # 支持在 GitHub 网页上手动点击一键打包
-
+push:
+tags:
+- 'v*'
+workflow_dispatch:
 permissions:
-  contents: write
-
+contents: write
 jobs:
-  build:
-    name: 📦 Build on ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-22.04
-            artifact_name: Linux
-          - os: windows-latest
-            artifact_name: Windows
-          - os: macos-latest
-            artifact_name: macOS
+build:
+name: 📦 Build on ${{ matrix.os }}
+runs-on: ${{ matrix.os }}
+strategy:
+fail-fast: false
+matrix:
+include:
+- os: ubuntu-24.04
+artifact_name: Linux
+- os: windows-latest
+artifact_name: Windows
+- os: macos-latest
+artifact_name: macOS
+code
+Code
+steps:
+  - name: 📥 Checkout repository
+    uses: actions/checkout@v4
 
-    steps:
-      - name: 📥 Checkout repository
-        uses: actions/checkout@v4
+  - name: 🟢 Setup Node.js
+    uses: actions/setup-node@v4
+    with:
+      node-version: 20
+      cache: 'npm'
 
-      - name: 🟢 Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: 'npm'
+  # Ubuntu 24.04 适配依赖
+  - name: 🐧 Install Ubuntu 24.04 build dependencies
+    if: runner.os == 'Linux'
+    run: |
+      sudo apt-get update
+      sudo apt-get install -y build-essential libarchive-tools libfuse2t64 || sudo apt-get install -y libfuse2
 
-      # Linux 环境编译 better-sqlite3 必需的基础依赖与打包工具
-      - name: 🐧 Install Linux system dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential libarchive-tools libfuse2
+  - name: 🍏 Setup macOS build tools
+    if: runner.os == 'macOS'
+    run: |
+      xcode-select --install || true
 
-      # macOS 环境原生编译工具
-      - name: 🍏 Setup macOS build tools
-        if: runner.os == 'macOS'
-        run: |
-          xcode-select --install || true
+  - name: 📦 Install npm dependencies
+    run: npm ci
 
-      - name: 📦 Install npm dependencies
-        run: npm ci
+  - name: 🔨 Compile Frontend (Vite + Vue-TSC)
+    run: npm run build
 
-      - name: 🔨 Compile Frontend (Vite + Vue-TSC)
-        run: npm run build
-
-      - name: 🏗️ Package Electron Application
-        run: npx electron-builder --publish always
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # macOS 代码签名留空即可跳过，保证未付费开发者账号也能正常打包 dmg
-          CSC_IDENTITY_AUTO_DISCOVERY: false
+  - name: 🏗️ Package Electron Application
+    run: npx electron-builder --publish always
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      CSC_IDENTITY_AUTO_DISCOVERY: false

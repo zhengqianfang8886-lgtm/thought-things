@@ -1,101 +1,100 @@
-ThoughtRings (思维年轮)
+# 🌲 ThoughtRings (思维年轮)
 
-一款基于“年轮演进”隐喻的终生思维笔记与知识手记管理系统。
+> **终生思维年轮与知识手记管理系统 · 本地优先 · 认知漫卷**
 
-💡 为什么是 ThoughtRings？
+ThoughtRings 是一款围绕**“客观原句初芯”**与在其上逐层生长蔓延的**“思维年轮（Thought Rings）”**展开的桌面级认知管理工具。它融合了现代出版级水彩排版、格式塔色彩认知心理学、苹果流体阻尼交互与 SQLite 本地零延迟物理引擎。
 
-传统笔记应用通常将记录视作静态卡片，但人的认知随着岁月在不断生长。
+---
 
-ThoughtRings
-以树木年轮为隐喻：你记录的每一句原句摘录、每一次顿悟或困惑，都是树木的初芯；随着时光推移，你在不同岁月里对其产生的反思、推翻与延伸，都会作为一层层思维年轮向外生长，记录认知演变的全过程。
+## ✨ 核心哲学与架构特性
 
-✨ 核心特性
+* **🌱 原句初芯与思维年轮**：每条手记以“客观摘录/原生感悟/待解之问”为起点，日后每一次重逢复读与认知演进，都化为最外围的一层新轮，自动计算沉淀时光（“+N 天沉淀”）。
+* **🏷️ 色彩群岛标签体系**：基于黄金分割角（137.5°）离散色相，同域父级标签色彩绝对固化，子标签微差衍生，300+ 标签无需逐字阅读即可余光秒选。
+* **🍏 苹果流体阻尼交互 (Apple Fluid Glider)**：顶栏导航与记录台三态分段器内置物理动量引擎（`cubic-bezier(0.2, 0.95, 0.3, 1)`），实体白玉滑块贴地穿梭，按压自带果冻微回弹。
+* **🔗 真实原子级双链引用**：富文本内联嵌入 TipTap 原生 `quoteRef` 胶囊，后台自动维护有向图拓扑，支持毫秒级反向链接溯源与连续跳转回退 HUD。
+* **📊 脉动天际线看板**：纵向立体水彩立柱天际线，自底向上拔地而起，直观呈现近期思考增长峰值与认知注意力光谱分布。
+* **🛡️ 本地优先与安全盾**：基于 `better-sqlite3`（WAL 模式 + 事务强一致性），提供 100,000 轮 PBKDF2 强加密会话、长效撤销栈（Ctrl+Z 瞬间复原物理删改）与物理热快照。
 
-1. 结构化三态记录与思维年轮
+---
 
-  - 三种卡片形态：
-      - 📖 客观摘录：典藏文献、书籍或文章原句，支持记录精确出处。
-      - 💡 原生感悟：记录当下灵感与顿悟契机（如散步顿悟、对话共鸣）。
-      - ❓ 待解之问：立项心中的困惑与假设，支持“探索中 / 已参透”状态追踪。
-  - 伴随年轮生长：在卡片下方随时追加新的认知，系统自动计算并标注时光跨度（如 +3天沉淀、+5个月、+1.2年）。
-  - 年轮物理印章：卡片右上角配备动态 SVG 年轮印章，直观展示该思考经历了几层演进。
+## 🖥️ 平台支持与安装指南
 
-2. 原子级双向链接与脉络回响
+### 1. Linux (适配 Ubuntu 24.04 LTS 及更高版本)
 
-  - 双链知识胶囊：在 TipTap 所见即所得编辑器中，一键插入关联的原句胶囊（[quote:id|标题]），编辑态为原子组件，整洁不乱码。
-  - 回响抽屉 (Backlinks)：卡片自动计算全库的反向引用，展开即可看到被哪些手记或哪层思考年轮所引用，并提供上下文预览。
-  - 连续链路回溯 (HUD)：跨卡片跳转后，底部悬浮 HUD 导航条记录访问路径，支持随时“跳回上一步”或“返回起点”。
+> **注意 (Ubuntu 24.04+)**：由于系统默认采用 fuse3，运行 AppImage 需先确保具备兼容运行库：
+> ```bash
+> sudo apt update
+> sudo apt install -y libfuse2t64
+> ```
 
-3. 多维检索与层级标签花园
-
-  - 层级标签系统：支持 #哲学/认知科学 格式的无限级父子标签。
-  - 标签知识工作台：支持标签重命名、语义推荐合并、一键清理无引用的闲置孤立标签。
-  - 分类与时光透镜：
-      - 顶部按“全部 / 摘录 / 感悟 / 问题 / 深入思考”一键过滤。
-      - 侧栏支持“月/日”时间轴手风琴与快速时间预设（今日/本周/本月/今年）。
-  - 高性能虚拟滚动：即使容纳数千条复杂图文卡片，依然丝滑顺畅、极速响应。
-
-4. 深度心流与灵感闪回
-
-  - 🎯 心流专注模式：大字报极简阅读视野，专注文档精读与认知续写；支持幽灵勘误（无缝修改原句错字与出处，不破坏结构）。
-  - 🎲 灵感漫游 (Resurface)：系统智能捞取半年前未解的问题、百天前的沉淀摘录，唤醒记忆并引导写下跨越时空的新答案。
-  - 🌟 常看看板：核心议题支持一键置顶到常看面板，便于随时回顾与迭代。
-
-5. 资产主权与本地加密
-
-  - 端到端本地存储：数据完全存储在本地 SQLite 数据库（WAL 极速模式），不依赖外部云服务。
-  - AES-256-GCM 强加密：开启密码锁后，使用 PBKDF2（100,000 轮）派生密钥，全文密文落盘，支持一键锁定防窥。
-  - 开放导出格式：
-      - Markdown 知识库：标准 CommonMark + YAML Frontmatter，可无缝迁入 Obsidian、Logseq。
-      - JSON 完整快照：结构化备份，支持增量恢复与自动去重。
-      - SQLite 热快照：零停机物理克隆完整数据库副本。
-  - 富媒体管理：支持剪贴板截图直接粘贴、本地图片存入，内置孤立冗余图片一键清理功能。
-
-⌨️ 常用快捷键
-
-| 快捷键 (Mac / Win)              | 功能描述             |
-| :--------------------------- | :--------------- |
-| `⌘ + 1` / `Ctrl + 1`         | 切换到 **✍️ 记录** 视图 |
-| `⌘ + 2` / `Ctrl + 2`         | 切换到 **📜 年轮** 流视图 |
-| `⌘ + 3` / `Ctrl + 3`         | 切换到 **🌟 常看** 看板  |
-| `⌘ + Enter` / `Ctrl + Enter` | 在记录工作台快速提交保存手记   |
-| `⌘ + \` / `Ctrl + \`         | 展开 / 收起侧栏目录      |
-| `⌘ + L` / `Ctrl + L`         | 立即锁定手记（防窥锁屏）     |
-| `Esc`                        | 退出专注心流模式 / 关闭弹窗  |
-
-🛠️ 技术栈
-
-  - 桌面框架：Electron 31
-  - 前端视图：Vue 3 (Composition API, <script setup>) + TypeScript
-  - 数据库：better-sqlite3 (SQLite WAL Mode)
-  - 富文本引擎：TipTap 3 (Starter-Kit, Highlight, TaskList, 自定义 Extension)
-  - UI & 样式：Tailwind CSS + PostCSS
-  - 构建工具：Vite 5 + electron-builder
-
-🚀 本地开发与构建
-
-1. 环境准备
-
-确保本地安装了 Node.js (推荐 v18+) 和 Python 3。
-
-2. 安装依赖
-
+* **方式 A：AppImage (绿色免安装，推荐)**
+  ```bash
+  chmod +x ThoughtRings-*.AppImage
+  ./ThoughtRings-*.AppImage
+方式 B：.deb (原生包安装)
+code
+Bash
+sudo dpkg -i thought-rings_*_amd64.deb
+# 若提示依赖缺失，执行自动修复：
+sudo apt-get install -f
+2. Windows (Windows 10 / 11)
+安装版：运行 ThoughtRings Setup *.exe，跟随向导安装，自带自动桌面快捷方式。
+便携版：运行 ThoughtRings *.exe，纯绿色单文件，放在 U 盘随身携带。
+3. macOS (Apple Silicon M系列 & Intel)
+双击打开 ThoughtRings-*.dmg，将应用图标拖动至 Applications 目录即可。
+⌨️ 效率极客全键盘指南
+快捷键 (Windows/Linux)	快捷键 (macOS)	触发动作
+Ctrl + 1	⌘ + 1	瞬切到 ✍️ 记录 工作台
+Ctrl + 2	⌘ + 2	瞬切到 📜 年轮 归档主轴
+Ctrl + 3	⌘ + 3	瞬切到 🌟 常看 聚焦看板
+Ctrl + 4	⌘ + 4	瞬切到 📈 脉动 激增看板
+Ctrl + Enter	⌘ + Enter	保存当前手记 / 沉浸模态提交
+Ctrl + Z	⌘ + Z	桌面级撤销（长效撤销误删手记/年轮）
+Ctrl + \	⌘ + \	快速展开/收起左侧分类目录
+Alt + ←	⌘ + [	跨卡片双链引用后原路跳回上一步
+Ctrl + L	⌘ + L	立即防窥锁屏
+Ctrl + = / - / 0	⌘ + = / - / 0	动态缩放全局字号 (大字/紧凑/重置)
+Esc	Esc	退出专注模式 / 关闭任意弹窗 / 清除预览
+🛠️ 本地开发与手动构建
+本项目采用 Vite + Vue 3 + TypeScript + TailwindCSS + Electron + better-sqlite3 架构。
+依赖环境
+Node.js: >= 20.0.0
+Python: 3.x
+Linux (Ubuntu 24.04+) 构建工具：
+code
+Bash
+sudo apt-get install -y build-essential libarchive-tools libfuse2t64
+快速启动
+code
+Bash
+# 1. 安装项目依赖 (自动编译原生 SQLite C++ 模块)
 npm install
 
-3. 开发模式启动
-
-启动 Vite 前端服务与 Electron 桌面宿主：
-
-# 终端 1：启动 Vite 渲染进程
-npm run dev
-
-# 终端 2：启动 Electron 主进程
-npm run electron:dev
-
-4. 打包分发
-
-构建并打包当前平台的安装包（支持 macOS dmg、Windows nsis、Linux AppImage/deb）：
-
+# 2. 启动 Vite 热更新服务 + Electron 调试窗口
+npm run start
+# 或分步执行：
+# 终端1: npm run dev
+# 终端2: npm run electron:dev
+本地编译打包
+code
+Bash
+# 编译前端并生成当前平台的安装包产物 (输出至 release/ 目录)
 npm run dist
+🚀 GitHub Actions 自动云端打包与发布
+本项目已配置免维护的 GitHub Actions CI/CD 流水线。
+提交代码并打上版本 Tag：
+code
+Bash
+git add .
+git commit -m "feat: 发布新版本"
+git push
 
-打包输出文件将存放于 release/ 目录下。
+# 推送版本标签 (以 'v' 开头)
+git tag v1.0.1
+git push origin v1.0.1
+全自动交付：
+GitHub Actions 会并行调动 Ubuntu 24.04、Windows Latest 与 macOS Latest 三台云主机；
+自动解决原生 C++ 模块编译并注入签名；
+约 3~5 分钟后，在 GitHub 仓库的 Releases 页面即可下载全平台安装包。
+📄 许可证
+ThoughtRings 基于 MIT License 开源。数据资产 100% 留存在你的本地设备中。
